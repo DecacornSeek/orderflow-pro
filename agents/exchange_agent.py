@@ -27,7 +27,7 @@ class ExchangeAgent:
         self.symbol = symbol
         self.redis_url = redis_url
         self.exchange_id = exchange_id
-        self.orderbook = OrderBook(symbol, depth=20)
+        self.orderbook = OrderBook(symbol, depth=100)
         self.last_trade: Optional[Dict[str, Any]] = None
         self.shutdown_event = asyncio.Event()
         self.redis: Optional[redis.asyncio.Redis] = None
@@ -51,7 +51,7 @@ class ExchangeAgent:
         """Infinite loop to watch order book and publish updates."""
         while not self.shutdown_event.is_set():
             try:
-                orderbook_data = await exchange.watch_order_book(self.symbol, limit=20)
+                orderbook_data = await exchange.watch_order_book(self.symbol, limit=100)
                 # Provide the full snapshot to OrderBook
                 self.orderbook.update(
                     bids=orderbook_data["bids"],

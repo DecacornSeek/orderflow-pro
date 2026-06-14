@@ -6,7 +6,7 @@ from typing import Dict, Iterable, List
 class OrderBook:
     """Maintains the top depth levels of an order book for a given trading symbol."""
 
-    def __init__(self, symbol: str, depth: int = 20) -> None:
+    def __init__(self, symbol: str, depth: int = 100) -> None:
         """Initialize the order book.
 
         Args:

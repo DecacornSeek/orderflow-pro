@@ -6,7 +6,7 @@ from core.orderbook import OrderBook
 
 async def test():
     exchange = ccxtpro.binance()
-    ob = OrderBook("BTC/USDT", 20)
+    ob = OrderBook("BTC/USDT", 100)
 
     print("Connecting to Binance WebSocket...")
 
@@ -15,7 +15,7 @@ async def test():
     ob.update(data["bids"], data["asks"])
     snap = ob.snapshot()
     print(f"L2 Book OK  — best bid: {snap['bids'][0]}  best ask: {snap['asks'][0]}")
-    print(f"             bids depth: {len(snap['bids'])}  asks depth: {len(snap['asks'])}")
+    print(f"             bids depth: {len(snap['bids'])}  asks depth: {len(snap['asks'])}  (expect 100)")
 
     # Test trade stream + aggressor derivation
     trades = await exchange.watch_trades("BTC/USDT")
