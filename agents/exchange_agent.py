@@ -3,7 +3,6 @@ import json
 import logging
 import signal
 import time
-from typing import Optional
 
 import ccxt.pro as ccxtpro
 import redis.asyncio as redis
@@ -32,7 +31,7 @@ async def handle_order_book_stream(exchange: ccxtpro.binance, redis_client: redi
     """L2 order book stream worker with exponential backoff."""
     logger.info("Verbinde mit Binance WebSocket (L2 order book)...")
     backoff = 1.0
-    orderbook = OrderBook()
+    orderbook = OrderBook("BTCUSDT", depth=100)
     first_update = True
 
     while not shutdown_event.is_set():
@@ -57,29 +56,29 @@ async def handle_order_book_stream(exchange: ccxtpro.binance, redis_client: redi
             # Apply the full snapshot – resets internal state
             orderbook.apply_snapshot(bids, asks, last_update_id)
 
-            # Metrics
-            best_bid = orderbook.best_bid
-            best_ask = orderbook.best_ask
-            spread = best_ask - best_bid
-            mid_price = (best_ask + best_bid) / 2.0
-            imb5 = orderbook.imbalance(5)
-            imb20 = orderbook.imbalance(20)
+            # Metrics + serialisable snapshot for Redis payload
+            metrics = orderbook.metrics()
+            snap = orderbook.snapshot()
 
             message = {
                 "exchange": "binance",
                 "symbol": "BTCUSDT",
                 "timestamp": timestamp_ms if timestamp_ms else int(time.time() * 1000),
-                "bids": orderbook.bids[:100],
-                "asks": orderbook.asks[:100],
-                "imbalance_5": imb5,
-                "imbalance_20": imb20,
-                "spread": spread,
-                "mid_price": mid_price,
+                "bids": snap["bids"],
+                "asks": snap["asks"],
+                "imbalance_5": metrics["imbalance_5"],
+                "imbalance_20": metrics["imbalance_20"],
+                "spread": metrics["spread"],
+                "mid_price": metrics["mid_price"],
                 "last_update_id": last_update_id
             }
 
             await redis_client.publish(REDIS_CHANNEL_L2, json.dumps(message))
-            logger.debug(f"L2 Update: lastUpdateId={last_update_id}, spread={spread:.2f}")
+            logger.debug(
+                "L2 Update: lastUpdateId=%s, spread=%s",
+                last_update_id,
+                f"{metrics['spread']:.2f}" if metrics["spread"] is not None else "n/a"
+            )
 
             first_update = False
             backoff = 1.0   # reset after successful message
@@ -168,7 +167,7 @@ async def main():
         await asyncio.gather(*tasks, return_exceptions=True)
 
         await exchange.close()
-        await redis_client.close()
+        await redis_client.aclose()
         logger.info("Alles sauber beendet.")
 
 
