@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment & Secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Redis dump
+dump.rdb
+
+# Node (frontend)
+node_modules/
+.next/
+frontend/.env.local
+
+# Docker
+infra/*.override.yml
+
+# Generator script (dev tool, not prod code)
+generate_sprint1.py
