@@ -27,7 +27,7 @@ class ExchangeAgent:
         self.symbol = symbol
         self.redis_url = redis_url
         self.exchange_id = exchange_id
-        self.orderbook = OrderBook()
+        self.orderbook = OrderBook(symbol, depth=20)
         self.last_trade: Optional[Dict[str, Any]] = None
         self.shutdown_event = asyncio.Event()
         self.redis: Optional[redis.asyncio.Redis] = None
@@ -57,11 +57,8 @@ class ExchangeAgent:
                     bids=orderbook_data["bids"],
                     asks=orderbook_data["asks"],
                 )
-                bids = self.orderbook.get_bids(20)
-                asks = self.orderbook.get_asks(20)
-                bids_list = [[price, size] for price, size in bids]
-                asks_list = [[price, size] for price, size in asks]
-                await self.publish_update(bids_list, asks_list)
+                snap = self.orderbook.snapshot()
+                await self.publish_update(snap["bids"], snap["asks"])
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -76,7 +73,15 @@ class ExchangeAgent:
                 if trades:
                     last = trades[-1]
                     side = last.get("side", "buy")
-                    aggressor = last.get("takerOrMaker", "taker")
+                    # Binance public stream doesn't set takerOrMaker directly;
+                    # derive from info['m'] (isBuyerMaker):
+                    #   m=True  -> buyer is maker -> seller is aggressor (taker)
+                    #   m=False -> buyer is taker (aggressor)
+                    is_buyer_maker = last.get("info", {}).get("m", None)
+                    if is_buyer_maker is not None:
+                        aggressor = "taker" if (side == "sell" and is_buyer_maker) or (side == "buy" and not is_buyer_maker) else "maker"
+                    else:
+                        aggressor = last.get("takerOrMaker") or "taker"
                     price = last.get("price", 0)
                     size = last.get("amount", 0)
                     self.last_trade = {
@@ -86,11 +91,8 @@ class ExchangeAgent:
                         "aggressor": aggressor,
                     }
                     # Publish the current order book together with the latest trade
-                    bids = self.orderbook.get_bids(20)
-                    asks = self.orderbook.get_asks(20)
-                    bids_list = [[p, s] for p, s in bids]
-                    asks_list = [[p, s] for p, s in asks]
-                    await self.publish_update(bids_list, asks_list)
+                    snap = self.orderbook.snapshot()
+                    await self.publish_update(snap["bids"], snap["asks"])
             except asyncio.CancelledError:
                 raise
             except Exception:
