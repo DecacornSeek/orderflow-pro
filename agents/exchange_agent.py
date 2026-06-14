@@ -3,243 +3,177 @@ import json
 import logging
 import signal
 import time
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 import ccxt.pro as ccxtpro
-import redis.asyncio
+import redis.asyncio as redis
 
+# NOTE: This agent depends on the core.orderbook module providing OrderBook.
+# Ensure the OrderBook class is importable from core.orderbook.
 from core.orderbook import OrderBook
 
 logger = logging.getLogger(__name__)
 
+SYMBOL = 'BTC/USDT'
+REDIS_CHANNEL_L2 = 'binance_l2'
+REDIS_CHANNEL_TRADES = 'binance_trades'
+MAX_BACKOFF = 60.0
 
-class ExchangeAgent:
-    """Connects to Binance via ccxt.pro, maintains a live L2 order book top 20
-    levels using OrderBook, extracts aggressor side from trades, and publishes
-    every update as JSON to a Redis channel."""
 
-    def __init__(
-        self,
-        symbol: str = "BTC/USDT",
-        redis_url: str = "redis://localhost:6379",
-        exchange_id: str = "binance",
-    ) -> None:
-        self.symbol = symbol
-        self.redis_url = redis_url
-        self.exchange_id = exchange_id
-        self.orderbook = OrderBook(symbol, depth=100)
-        self.last_trade: Optional[Dict[str, Any]] = None
-        self.shutdown_event = asyncio.Event()
-        self.redis: Optional[redis.asyncio.Redis] = None
-        self._ob_task: Optional[asyncio.Task] = None
-        self._trade_task: Optional[asyncio.Task] = None
+def configure_logging():
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
 
-    async def setup_redis(self) -> None:
-        """Create the Redis connection pool."""
-        self.redis = redis.asyncio.from_url(
-            self.redis_url, decode_responses=True
-        )
 
-    async def sleep_or_shutdown(self, delay: float) -> None:
-        """Sleep for `delay` seconds but return early if shutdown is requested."""
+async def handle_order_book_stream(exchange: ccxtpro.binance, redis_client: redis.Redis,
+                                   shutdown_event: asyncio.Event):
+    """L2 order book stream worker with exponential backoff."""
+    logger.info("Verbinde mit Binance WebSocket (L2 order book)...")
+    backoff = 1.0
+    orderbook = OrderBook()
+    first_update = True
+
+    while not shutdown_event.is_set():
         try:
-            await asyncio.wait_for(asyncio.shield(self.shutdown_event.wait()), timeout=delay)
-        except asyncio.TimeoutError:
-            pass  # delay expired normally
+            ob = await exchange.watch_order_book(SYMBOL, limit=100)
+            # Successful receive – reset backoff after processing
+            bids = ob.get('bids')
+            asks = ob.get('asks')
+            last_update_id = ob.get('nonce')
+            timestamp_ms = ob.get('timestamp')
 
-    async def order_book_loop(self, exchange: ccxtpro.Exchange) -> None:
-        """Infinite loop to watch order book and publish updates."""
-        while not self.shutdown_event.is_set():
-            try:
-                orderbook_data = await exchange.watch_order_book(self.symbol, limit=100)
-                # Provide the full snapshot to OrderBook
-                self.orderbook.update(
-                    bids=orderbook_data["bids"],
-                    asks=orderbook_data["asks"],
-                )
-                snap = self.orderbook.snapshot()
-                await self.publish_update(snap["bids"], snap["asks"])
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("Error in order book loop")
-                raise  # let outer logic reconnect
+            if not bids or not asks or last_update_id is None:
+                logger.warning("Ungültiges Orderbuch-Update erhalten, überspringe")
+                # Still consider the call successful → reset backoff
+                backoff = 1.0
+                continue
 
-    async def trade_loop(self, exchange: ccxtpro.Exchange) -> None:
-        """Infinite loop to watch trades and publish updates."""
-        while not self.shutdown_event.is_set():
-            try:
-                trades = await exchange.watch_trades(self.symbol)
-                if trades:
-                    last = trades[-1]
-                    side = last.get("side", "buy")
-                    # Binance public stream doesn't set takerOrMaker directly;
-                    # derive from info['m'] (isBuyerMaker):
-                    #   m=True  -> buyer is maker -> seller is aggressor (taker)
-                    #   m=False -> buyer is taker (aggressor)
-                    is_buyer_maker = last.get("info", {}).get("m", None)
-                    if is_buyer_maker is not None:
-                        aggressor = "taker" if (side == "sell" and is_buyer_maker) or (side == "buy" and not is_buyer_maker) else "maker"
-                    else:
-                        aggressor = last.get("takerOrMaker") or "taker"
-                    price = last.get("price", 0)
-                    size = last.get("amount", 0)
-                    self.last_trade = {
-                        "price": price,
-                        "size": size,
-                        "side": side,
-                        "aggressor": aggressor,
-                    }
-                    # Publish the current order book together with the latest trade
-                    snap = self.orderbook.snapshot()
-                    await self.publish_update(snap["bids"], snap["asks"])
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("Error in trade loop")
-                raise
+            # Sequence number validation
+            if not first_update and last_update_id <= orderbook.last_update_id:
+                logger.warning(f"Sequence Gap erkannt ({orderbook.last_update_id} vs {last_update_id}) — vollständiger Resync")
 
-    async def publish_update(
-        self, bids: List[List[float]], asks: List[List[float]]
-    ) -> None:
-        """Publish order book and last trade snapshot to Redis."""
-        if self.redis is None or self.shutdown_event.is_set():
-            return
+            # Apply the full snapshot – resets internal state
+            orderbook.apply_snapshot(bids, asks, last_update_id)
 
-        # Fallback last_trade to satisfy the JSON schema until the first trade arrives
-        lt = self.last_trade
-        if lt is None:
-            lt = {
-                "price": 0,
-                "size": 0,
-                "side": "buy",
-                "aggressor": "maker",
+            # Metrics
+            best_bid = orderbook.best_bid
+            best_ask = orderbook.best_ask
+            spread = best_ask - best_bid
+            mid_price = (best_ask + best_bid) / 2.0
+            imb5 = orderbook.imbalance(5)
+            imb20 = orderbook.imbalance(20)
+
+            message = {
+                "exchange": "binance",
+                "symbol": "BTCUSDT",
+                "timestamp": timestamp_ms if timestamp_ms else int(time.time() * 1000),
+                "bids": orderbook.bids[:100],
+                "asks": orderbook.asks[:100],
+                "imbalance_5": imb5,
+                "imbalance_20": imb20,
+                "spread": spread,
+                "mid_price": mid_price,
+                "last_update_id": last_update_id
             }
 
-        ts = int(time.time() * 1000)
-        payload = {
-            "ts": ts,
-            "symbol": self.symbol,
-            "bids": bids,
-            "asks": asks,
-            "last_trade": lt,
-        }
+            await redis_client.publish(REDIS_CHANNEL_L2, json.dumps(message))
+            logger.debug(f"L2 Update: lastUpdateId={last_update_id}, spread={spread:.2f}")
 
+            first_update = False
+            backoff = 1.0   # reset after successful message
+
+        except Exception as e:
+            logger.error(f"Verbindung unterbrochen (L2): {e}. Reconnect in {backoff}s")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, MAX_BACKOFF)
+
+    logger.info("L2 order book stream beendet.")
+
+
+async def handle_trade_stream(exchange: ccxtpro.binance, redis_client: redis.Redis,
+                              shutdown_event: asyncio.Event):
+    """Trade stream worker with exponential backoff."""
+    logger.info("Verbinde mit Binance WebSocket (Trades)...")
+    backoff = 1.0
+
+    while not shutdown_event.is_set():
         try:
-            await self.redis.publish("binance_orderbook", json.dumps(payload))
-        except Exception:
-            logger.exception("Failed to publish to Redis")
+            trades = await exchange.watch_trades(SYMBOL)
+            if trades:
+                for trade in trades:
+                    info = trade.get('info', {})
+                    # Binance field 'm': isBuyerMaker.
+                    # m == True → seller is aggressor → "sell"
+                    # m == False → buyer is aggressor → "buy"
+                    maker = info.get('m', False)
+                    aggressor_side = "sell" if maker else "buy"
 
-    async def shutdown(self, sig: Optional[int] = None) -> None:
-        """Trigger graceful shutdown."""
-        if self.shutdown_event.is_set():
-            return
-        logger.info(f"Shutdown signal received (signal={sig})")
-        self.shutdown_event.set()
-        # Cancel running watch tasks so that the asyncio.wait() unblocks
-        if self._ob_task:
-            self._ob_task.cancel()
-        if self._trade_task:
-            self._trade_task.cancel()
+                    msg = {
+                        "exchange": "binance",
+                        "symbol": "BTCUSDT",
+                        "timestamp": trade.get('timestamp'),
+                        "price": trade.get('price'),
+                        "size": trade.get('amount'),
+                        "aggressor_side": aggressor_side,
+                        "trade_id": str(trade.get('id'))
+                    }
+                    await redis_client.publish(REDIS_CHANNEL_TRADES, json.dumps(msg))
+                    logger.debug(f"Trade: {aggressor_side} {trade.get('amount')} @ {trade.get('price')}")
+            backoff = 1.0   # reset after successful call
 
-    async def cleanup(self) -> None:
-        """Close Redis connection and finalize."""
-        if self.redis:
-            try:
-                await self.redis.close()
-            except Exception:
-                logger.exception("Error closing Redis")
-        logger.info("Shutdown complete.")
+        except Exception as e:
+            logger.error(f"Verbindung unterbrochen (Trades): {e}. Reconnect in {backoff}s")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, MAX_BACKOFF)
 
-    async def run(self) -> None:
-        """Main entry point – handle connections, reconnection and graceful shutdown."""
-        await self.setup_redis()
-
-        # Register signal handlers for graceful shutdown
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
-                loop.add_signal_handler(
-                    sig,
-                    lambda s=sig: asyncio.create_task(self.shutdown(s)),
-                )
-            except NotImplementedError:
-                # Windows does not support add_signal_handler for SIGTERM etc.
-                pass
-
-        backoff = 1.0
-        max_backoff = 60.0
-
-        while not self.shutdown_event.is_set():
-            try:
-                exchange = ccxtpro.binance({"enableRateLimit": True})
-                logger.info(f"Connecting to {self.exchange_id} for {self.symbol}")
-                await exchange.load_markets()
-                logger.info("Connected. Starting watch tasks.")
-
-                self._ob_task = asyncio.create_task(self.order_book_loop(exchange))
-                self._trade_task = asyncio.create_task(self.trade_loop(exchange))
-
-                done, pending = await asyncio.wait(
-                    [self._ob_task, self._trade_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-
-                # If shutdown was requested, cancel the other task and exit loop
-                if self.shutdown_event.is_set():
-                    for task in pending:
-                        task.cancel()
-                    break
-
-                # One of the tasks finished with an error – cancel the remaining one
-                for task in pending:
-                    task.cancel()
-
-                # Wait for cancellations and log any exceptions
-                await asyncio.gather(*pending, return_exceptions=True)
-                for task in done:
-                    exc = task.exception()
-                    if exc is not None:
-                        logger.error("Task failed with error", exc_info=exc)
-
-                await exchange.close()
-
-                if self.shutdown_event.is_set():
-                    break
-
-                # Reconnect with exponential backoff
-                delay = min(backoff, max_backoff)
-                logger.info(f"Reconnecting in {delay:.1f} seconds...")
-                await self.sleep_or_shutdown(delay)
-                if self.shutdown_event.is_set():
-                    break
-                backoff = min(backoff * 2, max_backoff)
-
-            except asyncio.CancelledError:
-                break
-            except Exception:
-                logger.exception("Connection loop error")
-                if self.shutdown_event.is_set():
-                    break
-                delay = min(backoff, max_backoff)
-                logger.info(f"Reconnecting in {delay:.1f} seconds...")
-                await self.sleep_or_shutdown(delay)
-                if self.shutdown_event.is_set():
-                    break
-                backoff = min(backoff * 2, max_backoff)
-
-        await self.cleanup()
+    logger.info("Trade stream beendet.")
 
 
-async def main() -> None:
-    """Application entry point."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s: %(message)s",
-    )
-    agent = ExchangeAgent(symbol="BTC/USDT")
-    await agent.run()
+async def main():
+    configure_logging()
+    shutdown_event = asyncio.Event()
+
+    # Register signal handlers
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: shutdown_event.set())
+        except NotImplementedError:
+            pass  # Windows compatibility
+
+    redis_client = redis.Redis(decode_responses=False)
+
+    exchange = ccxtpro.binance({
+        'enableRateLimit': False,
+        'options': {
+            'newUpdates': True   # Ensures watch_trades only returns new trades
+        }
+    })
+
+    l2_task = asyncio.create_task(handle_order_book_stream(exchange, redis_client, shutdown_event))
+    trade_task = asyncio.create_task(handle_trade_stream(exchange, redis_client, shutdown_event))
+
+    tasks = [l2_task, trade_task]
+
+    try:
+        await shutdown_event.wait()
+        logger.info("Shutdown signal empfangen. Beende alle Streams.")
+    except asyncio.CancelledError:
+        pass
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        await exchange.close()
+        await redis_client.close()
+        logger.info("Alles sauber beendet.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

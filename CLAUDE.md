@@ -1,34 +1,37 @@
-# OrderFlow Pro — Projekt Kontext
+# OrderFlow Pro — Master Context
 
-## Was wir bauen
-Multi-Exchange Order Flow Analyse Tool mit:
-- Live L2 Order Book Aggregation (Binance, Bybit, OKX)
-- Echtzeit CVD, Delta, Imbalance Berechnung
-- Heatmap Visualisierung (wie Bookmap)
-- Echte Liquidation Events (nicht geschätzt)
-- Claude-powered Signal Agent + Market Narrator
-- Pattern Memory via ChromaDB (RAG)
+## Produkt These
+Trader haben TradingView offen aber sehen nur den Preis. 
+OrderFlow Pro ist der zweite Bildschirm daneben: Echtzeit 
+Order Flow aus 3 Exchanges + KI-Kontext der erklärt was passiert.
+
+## Zielgruppe
+Phase 1: Eigener Gebrauch (Crypto Intraday, Perps + Spot)
+Phase 2: Alpha Gruppe 5-10 Trader (€49-99/Monat)
+Phase 3: Public Launch + Prop Firm Tier
 
 ## Tech Stack
-- Backend: Python + asyncio + ccxt pro
-- Message Bus: Redis Pub/Sub
-- Agent Framework: OpenAI Swarm
-- Intelligence: Claude API (Signal Agent)
-- Memory: ChromaDB (Vektor DB)
-- Frontend: Next.js + TradingView Lightweight Charts + D3.js
-- Infra: Docker + Hetzner VPS
+- Data:        ccxt pro (unified WebSocket für alle Exchanges)
+- Async:       Python asyncio (parallele Agent-Loops)
+- Message Bus: Redis Pub/Sub (Agents kommunizieren nur über Redis)
+- Agents:      OpenAI Swarm (Orchestrierung)
+- Intelligence: Claude API (Signal Agent + Market Narrator)
+- Memory:      ChromaDB (Pattern Memory / RAG)
+- Backend:     FastAPI + WebSocket Server
+- Frontend:    Next.js + TradingView Lightweight Charts + D3.js
+- Infra:       Docker + Hetzner VPS
 
 ## Projekt Struktur
 orderflow-pro/
 ├── agents/
-│   ├── exchange_agent.py     # Ein Agent pro Exchange
-│   ├── aggregator_agent.py   # CVD, Delta, Imbalance
-│   ├── signal_agent.py       # Claude-powered Analysis
-│   └── display_agent.py      # WebSocket → Frontend
+│   ├── exchange_agent.py      # Ein Agent pro Exchange
+│   ├── aggregator_agent.py    # CVD, Delta, Imbalance
+│   ├── signal_agent.py        # Claude-powered Analysis
+│   └── display_agent.py       # WebSocket → Frontend
 ├── core/
-│   ├── orderbook.py          # L2 Book State Management
-│   ├── cvd.py                # CVD Berechnung
-│   └── liquidations.py       # Liquidation Event Processing
+│   ├── orderbook.py           # L2 Book State Management
+│   ├── cvd.py                 # CVD Berechnung
+│   └── liquidations.py        # Liquidation Event Processing
 ├── frontend/
 │   ├── pages/
 │   └── components/
@@ -38,28 +41,94 @@ orderflow-pro/
 ├── infra/
 │   ├── docker-compose.yml
 │   └── redis.conf
-├── CLAUDE.md                 # Diese Datei
+├── CLAUDE.md
 └── requirements.txt
 
-## Build Reihenfolge (Sprints)
-Sprint 1: Binance WebSocket → L2 Book + Trades (asyncio + ccxt pro)
-Sprint 2: Redis + Aggregator → CVD live
-Sprint 3: FastAPI + Lightweight Charts → erste Heatmap
-Sprint 4: Bybit + OKX Agents
-Sprint 5: Claude Signal Agent + Narrator
-Sprint 6: ChromaDB Pattern Memory
-Sprint 7: Docker + VPS Deploy
+## Agent Architektur
+Jeder Agent läuft als kontinuierlicher asyncio Loop:
+- Exchange Agents: WebSocket offen, pushen zu Redis
+- Aggregator: subscribed auf alle Exchange Channels, berechnet
+- Signal Agent: analysiert aggregierte Daten, Claude API Call
+- Display Agent: pushed via WebSocket ans Frontend
 
-## Aktueller Sprint
-Sprint 1 — Binance L2 Agent
+Redis Channels:
+- binance_l2, bybit_l2, okx_l2       → raw L2 data
+- binance_trades, bybit_trades, ...   → trade stream
+- binance_liquidations, ...           → liquidation events
+- aggregated_cvd                      → multi-exchange CVD
+- signals                             → KI signals + narrator
+
+## L2 Order Book Requirements
+- Top 100 Bids + Top 100 Asks pro Exchange
+- Snapshot beim Start, dann Delta Updates
+- Sequence Number Validierung — bei Gap: resync
+- Size = 0 → Level löschen
+- Exponential backoff reconnect (1s, 2s, 4s, 8s, max 60s)
+- Berechne: spread, mid_price, imbalance (top 5 + top 20)
+
+## Redis Output Format (alle Exchange Agents)
+{
+  "exchange": "binance",
+  "symbol": "BTCUSDT",
+  "timestamp": <unix ms>,
+  "bids": [[price, size], ...],   # top 100
+  "asks": [[price, size], ...],   # top 100
+  "imbalance_5":  <float 0-1>,    # top 5 levels
+  "imbalance_20": <float 0-1>,    # top 20 levels
+  "spread": <float>,
+  "mid_price": <float>,
+  "last_update_id": <int>
+}
+
+## Trade Stream Format
+{
+  "exchange": "binance",
+  "symbol": "BTCUSDT",
+  "timestamp": <unix ms>,
+  "price": <float>,
+  "size": <float>,
+  "aggressor_side": "buy" | "sell",
+  "trade_id": <string>
+}
+
+## Funktionale Features (Priorität)
+CORE (Sprint 1-4):
+- Live Heatmap (L2 Order Book als Farbkodierung)
+- Multi-Exchange CVD aggregiert + per Exchange
+- Echte Liquidation Bubbles (nicht geschätzt)
+
+SIGNAL (Sprint 5-6):
+- Spoofing Detection
+- Absorption Erkennung  
+- Funding Rate + OI + CVD Kombination
+
+ALPHA (Sprint 7+):
+- Claude Market Narrator (Echtzeit Kontext-Satz)
+- Pattern Memory via ChromaDB (RAG auf historischem Order Flow)
+
+## Nicht-funktionale Requirements
+- Latenz: Ende-zu-Ende unter 50ms
+- Uptime: 24/7, Auto-Reconnect, kein manuelles Restart
+- Datentreue: Sequence Validation, kein corrupted Book
+- UX: Browser-Fenster neben TradingView, Dark Mode
+- Privacy: Nur public market data, keine API Keys nötig
 
 ## Coding Prinzipien
-- Immer asyncio, kein blocking code
+- Immer asyncio, NIE blocking code
 - Jeder Agent läuft unabhängig
-- Redis als einziger Kommunikationskanal zwischen Agents
-- Fehler werden geloggt, nie gecrasht (reconnect logic immer dabei)
-- Kommentare auf english
+- Redis ist der EINZIGE Kommunikationskanal zwischen Agents
+- Fehler loggen, nie crashen — reconnect logic immer dabei
+- Kommentare auf Deutsch
+- Nach jedem Sprint: CLAUDE.md updaten mit Decisions + Status
 
+## Sprint Status
+Sprint 1: 🔄 IN PROGRESS — Binance Exchange Agent
+Sprint 2: ⏳ Aggregator + CVD
+Sprint 3: ⏳ FastAPI + Heatmap Frontend
+Sprint 4: ⏳ Bybit + OKX Agents
+Sprint 5: ⏳ Signal Agent (Claude API)
+Sprint 6: ⏳ ChromaDB Pattern Memory
+Sprint 7: ⏳ Docker + VPS Deploy
 
 ┌─────────────────────────────────────────────────┐
 │              ORCHESTRATOR                        │

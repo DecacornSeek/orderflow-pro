@@ -1,4 +1,4 @@
-"""Quick smoke test — Binance WebSocket: L2 book + trades"""
+"""Quick smoke test — Binance WebSocket: L2 book + trades + metrics"""
 import asyncio, sys
 sys.path.insert(0, ".")
 import ccxt.pro as ccxtpro
@@ -6,29 +6,34 @@ from core.orderbook import OrderBook
 
 async def test():
     exchange = ccxtpro.binance()
-    ob = OrderBook("BTC/USDT", 100)
+    ob = OrderBook("BTC/USDT", depth=100)
 
-    print("Connecting to Binance WebSocket...")
+    print("Verbinde mit Binance WebSocket...")
 
-    # Test L2 order book
-    data = await exchange.watch_order_book("BTC/USDT")
-    ob.update(data["bids"], data["asks"])
+    # --- L2 Order Book: Snapshot ---
+    data = await exchange.watch_order_book("BTC/USDT", limit=100)
+    update_id = data.get("nonce") or data.get("last_update_id") or 0
+    ob.apply_snapshot(data["bids"], data["asks"], last_update_id=update_id)
     snap = ob.snapshot()
-    print(f"L2 Book OK  — best bid: {snap['bids'][0]}  best ask: {snap['asks'][0]}")
-    print(f"             bids depth: {len(snap['bids'])}  asks depth: {len(snap['asks'])}  (expect 100)")
+    metrics = ob.metrics()
+    print(f"L2 Snapshot OK — bids: {len(snap['bids'])}  asks: {len(snap['asks'])}  (expect 100)")
+    print(f"  best bid: {snap['bids'][0]}  best ask: {snap['asks'][0]}")
+    print(f"  spread: {metrics['spread']:.4f}  mid: {metrics['mid_price']:.2f}")
+    print(f"  imbalance_5: {metrics['imbalance_5']:.3f}  imbalance_20: {metrics['imbalance_20']:.3f}")
 
-    # Test trade stream + aggressor derivation
+    # --- Trade Stream + aggressor ---
     trades = await exchange.watch_trades("BTC/USDT")
     t = trades[-1]
     side = t["side"]
     is_buyer_maker = t.get("info", {}).get("m", None)
     if is_buyer_maker is not None:
-        aggressor = "taker" if (side == "sell" and is_buyer_maker) or (side == "buy" and not is_buyer_maker) else "maker"
+        aggressor = "sell" if is_buyer_maker else "buy"
     else:
-        aggressor = t.get("takerOrMaker") or "taker"
-    print(f"Trade OK    — price: {t['price']}  size: {t['amount']}  side: {side}  aggressor: {aggressor}  (raw m={is_buyer_maker})")
+        aggressor = t.get("takerOrMaker") or "buy"
+    print(f"Trade OK      — price: {t['price']}  size: {t['amount']}  aggressor_side: {aggressor}  (raw m={is_buyer_maker})")
 
     await exchange.close()
-    print("\nAll systems GO — Sprint 1 WebSocket working!")
+    print("\nAll systems GO — Sprint 1 verified!")
+
 
 asyncio.run(test())
