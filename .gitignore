@@ -35,6 +35,9 @@ logs/
 # Redis dump
 dump.rdb
 
+# Trainingsdaten (gross, lokal behalten)
+data/
+
 # Node (frontend)
 node_modules/
 .next/

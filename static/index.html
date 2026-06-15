@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>OrderFlow Pro — BTC/USDT</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0d1117; color:#e6edf3;
+  font-family:'JetBrains Mono',ui-monospace,monospace;
+  height:100vh; display:flex; flex-direction:column; overflow:hidden;
+}
+
+/* ── Header ── */
+#hdr {
+  height:44px; flex-shrink:0;
+  display:flex; align-items:center; gap:28px; padding:0 16px;
+  border-bottom:1px solid #21262d;
+}
+#hdr-title { font-size:14px; color:#58a6ff; letter-spacing:3px; font-weight:bold; }
+.m { display:flex; flex-direction:column; line-height:1.3; }
+.ml { font-size:9px; color:#8b949e; text-transform:uppercase; letter-spacing:1px; }
+.mv { font-size:13px; font-weight:bold; }
+#conn { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:10px; color:#8b949e; }
+#dot { width:7px; height:7px; border-radius:50%; background:#f85149; }
+#dot.live { background:#3fb950; }
+
+/* ── Main area ── */
+#main { flex:1; display:flex; min-height:0; }
+
+/* Charts column */
+#charts { flex:1; display:flex; flex-direction:column; min-width:0; }
+#c-wrap { flex:3; position:relative; min-height:0; }
+#c-chart { width:100%; height:100%; }
+#cvd-wrap { flex:1; border-top:1px solid #21262d; min-height:0; }
+#cvd-wrap > div { font-size:9px; color:#8b949e; padding:3px 8px; letter-spacing:1px; }
+#cvd-chart { width:100%; height:calc(100% - 18px); }
+
+/* Volume Profile sidebar */
+#vp {
+  width:110px; flex-shrink:0;
+  border-left:1px solid #21262d;
+  position:relative;
+}
+#vp canvas { position:absolute; inset:0; width:100%; height:100%; }
+#vp-label { position:absolute; top:4px; left:6px; font-size:9px; color:#8b949e; letter-spacing:1px; pointer-events:none; z-index:1; }
+
+/* Signal log */
+#slog {
+  height:68px; flex-shrink:0;
+  border-top:1px solid #21262d;
+  overflow-y:auto; padding:4px 14px;
+}
+.sig { font-size:11px; padding:1px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sig time { color:#8b949e; margin-right:10px; }
+.bull { color:#3fb950; } .bear { color:#f85149; } .warn { color:#e3b341; } .neut { color:#c9d1d9; }
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <span id="hdr-title">⬡ BTC / USDT</span>
+  <div class="m"><span class="ml">Preis</span><span class="mv" id="v-price" style="color:#e6edf3">---</span></div>
+  <div class="m"><span class="ml">CVD Rolling</span><span class="mv" id="v-cvd">---</span></div>
+  <div class="m"><span class="ml">Imbalance ×5</span><span class="mv" id="v-imb5">---</span></div>
+  <div class="m"><span class="ml">Imbalance ×20</span><span class="mv" id="v-imb20">---</span></div>
+  <div class="m"><span class="ml">Spread</span><span class="mv" id="v-spread" style="color:#8b949e">---</span></div>
+  <div id="conn"><div id="dot"></div><span id="conn-label">OFFLINE</span></div>
+</div>
+
+<div id="main">
+  <div id="charts">
+    <div id="c-wrap"><div id="c-chart"></div></div>
+    <div id="cvd-wrap">
+      <div>CVD  ·  CUMULATIVE DELTA</div>
+      <div id="cvd-chart"></div>
+    </div>
+  </div>
+  <div id="vp">
+    <canvas id="vp-canvas"></canvas>
+    <span id="vp-label">VOL PROFILE</span>
+  </div>
+</div>
+
+<div id="slog">
+  <div class="sig neut"><time>--:--:--</time>Verbinde mit Backend...</div>
+</div>
+
+<script>
+// ── Theme ────────────────────────────────────────────────────────────────────
+const BASE = {
+  layout: { background: { color: '#0d1117' }, textColor: '#8b949e' },
+  grid:   { vertLines: { color: '#161b22' }, horzLines: { color: '#161b22' } },
+  crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+  timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#21262d', rightOffset: 5 },
+  rightPriceScale: { borderColor: '#21262d' },
+  autoSize: true,
+};
+
+// ── Charts ───────────────────────────────────────────────────────────────────
+const candleChart = LightweightCharts.createChart(document.getElementById('c-chart'), BASE);
+const cvdChart    = LightweightCharts.createChart(document.getElementById('cvd-chart'), {
+  ...BASE,
+  rightPriceScale: { borderColor: '#21262d', autoScale: true },
+});
+
+const candleSeries = candleChart.addCandlestickSeries({
+  upColor: '#3fb950', downColor: '#f85149',
+  borderUpColor: '#3fb950', borderDownColor: '#f85149',
+  wickUpColor: '#3fb950', wickDownColor: '#f85149',
+});
+
+const cvdLine = cvdChart.addLineSeries({
+  color: '#58a6ff', lineWidth: 1,
+  priceLineVisible: false, lastValueVisible: false,
+  crosshairMarkerVisible: false,
+});
+cvdLine.createPriceLine({ price: 0, color: '#30363d', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed });
+
+// ── Sync time scales ─────────────────────────────────────────────────────────
+let _syncing = false;
+function linkCharts(a, b) {
+  a.timeScale().subscribeVisibleLogicalRangeChange(r => {
+    if (_syncing || !r) return;
+    _syncing = true;
+    b.timeScale().setVisibleLogicalRange(r);
+    _syncing = false;
+  });
+}
+linkCharts(candleChart, cvdChart);
+linkCharts(cvdChart, candleChart);
+
+// ── Volume Profile ────────────────────────────────────────────────────────────
+const vpCanvas = document.getElementById('vp-canvas');
+const vpCtx    = vpCanvas.getContext('2d');
+let vap = {};
+const BUCKET = 25;
+
+function drawVAP() {
+  const el = document.getElementById('vp');
+  vpCanvas.width  = el.clientWidth;
+  vpCanvas.height = el.clientHeight;
+  vpCtx.clearRect(0, 0, vpCanvas.width, vpCanvas.height);
+
+  const entries = Object.entries(vap).map(([p, v]) => [+p, v]);
+  if (!entries.length) return;
+
+  const maxVol = Math.max(...entries.map(([, v]) => v));
+  const W = vpCanvas.width - 2;
+
+  entries.forEach(([price, vol]) => {
+    const y0 = candleSeries.priceToCoordinate(price);
+    const y1 = candleSeries.priceToCoordinate(price + BUCKET);
+    if (y0 === null || y1 === null) return;
+    const top = Math.min(y0, y1);
+    const h   = Math.max(1, Math.abs(y1 - y0) - 1);
+    const w   = Math.round((vol / maxVol) * W);
+    vpCtx.fillStyle = 'rgba(88,166,255,0.30)';
+    vpCtx.fillRect(W - w, top, w, h);
+  });
+}
+
+// Redraw VAP when chart range changes
+candleChart.timeScale().subscribeVisibleTimeRangeChange(drawVAP);
+candleChart.subscribeCrosshairMove(drawVAP);
+
+// ── Live candle tracking ──────────────────────────────────────────────────────
+let currentCandle = null;
+function getMin(ts) { return Math.floor(ts / 1000 / 60) * 60; }
+
+function processTrade(price, ts) {
+  const t = getMin(ts);
+  if (!currentCandle || currentCandle.time !== t) {
+    currentCandle = { time: t, open: price, high: price, low: price, close: price };
+  } else {
+    if (price > currentCandle.high) currentCandle.high = price;
+    if (price < currentCandle.low)  currentCandle.low  = price;
+    currentCandle.close = price;
+  }
+  candleSeries.update(currentCandle);
+}
+
+// ── Header updates ────────────────────────────────────────────────────────────
+function fmt(v, dec=2) { return v >= 0 ? `+${v.toFixed(dec)}` : v.toFixed(dec); }
+function color(v) { return v >= 0 ? '#3fb950' : '#f85149'; }
+
+function updateHeader(msg) {
+  const cvd = msg.cvd || {};
+  const mid  = msg.mid_price;
+
+  if (mid) {
+    document.getElementById('v-price').textContent =
+      '$' + mid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  if (cvd.rolling_delta != null) {
+    const el = document.getElementById('v-cvd');
+    el.textContent = fmt(cvd.rolling_delta) + ' BTC';
+    el.style.color = color(cvd.rolling_delta);
+  }
+  if (msg.imbalance_5 != null) {
+    const el = document.getElementById('v-imb5');
+    el.textContent = fmt(msg.imbalance_5, 3);
+    el.style.color = color(msg.imbalance_5);
+  }
+  if (msg.imbalance_20 != null) {
+    const el = document.getElementById('v-imb20');
+    el.textContent = fmt(msg.imbalance_20, 3);
+    el.style.color = color(msg.imbalance_20);
+  }
+  if (msg.spread != null) {
+    document.getElementById('v-spread').textContent = '$' + msg.spread.toFixed(2);
+  }
+  // CVD line — bucket per minute
+  if (cvd.cumulative_delta != null && msg.timestamp) {
+    const t = getMin(msg.timestamp);
+    cvdLine.update({ time: t, value: cvd.cumulative_delta });
+  }
+}
+
+// ── Signal log ────────────────────────────────────────────────────────────────
+const slog = document.getElementById('slog');
+
+function addSignal(text, ts, level) {
+  const t   = new Date(ts).toTimeString().slice(0, 8);
+  const cls = level === 'warning' ? 'warn'
+            : text.includes('BULLISH') ? 'bull'
+            : text.includes('BEARISH') ? 'bear'
+            : 'neut';
+  const div = document.createElement('div');
+  div.className = `sig ${cls}`;
+  div.innerHTML = `<time>${t}</time>${text}`;
+  slog.insertBefore(div, slog.firstChild);
+  while (slog.children.length > 40) slog.removeChild(slog.lastChild);
+}
+
+// ── History load ──────────────────────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const res  = await fetch('/history');
+    const data = await res.json();
+    if (data.klines?.length) {
+      candleSeries.setData(data.klines);
+      const zeros = data.klines.map(k => ({ time: k.time, value: 0 }));
+      cvdLine.setData(zeros);
+      candleChart.timeScale().scrollToRealTime();
+    }
+    if (data.vap && Object.keys(data.vap).length) {
+      vap = {};
+      for (const [k, v] of Object.entries(data.vap)) vap[+k] = v;
+      drawVAP();
+    }
+  } catch (e) {
+    console.warn('History nicht erreichbar:', e);
+  }
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connect() {
+  const dot   = document.getElementById('dot');
+  const label = document.getElementById('conn-label');
+  const ws    = new WebSocket('ws://localhost:8000/ws');
+
+  ws.onopen = () => {
+    dot.classList.add('live');
+    label.textContent = 'LIVE';
+    addSignal('Verbindung hergestellt.', Date.now(), 'info');
+  };
+
+  ws.onclose = () => {
+    dot.classList.remove('live');
+    label.textContent = 'OFFLINE';
+    setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    switch (msg.type) {
+      case 'tick':
+        updateHeader(msg);
+        drawVAP();
+        break;
+      case 'trade':
+        if (msg.price && msg.timestamp) processTrade(msg.price, msg.timestamp);
+        if (msg.price && msg.size) {
+          const b = Math.floor(msg.price / BUCKET) * BUCKET;
+          vap[b]  = (vap[b] || 0) + msg.size;
+        }
+        break;
+      case 'signal':
+        addSignal(msg.text, msg.timestamp, msg.level);
+        break;
+      case 'history':
+        if (msg.vap) {
+          vap = {};
+          for (const [k, v] of Object.entries(msg.vap)) vap[+k] = v;
+          drawVAP();
+        }
+        break;
+    }
+  };
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadHistory().then(connect);
+</script>
+</body>
+</html>

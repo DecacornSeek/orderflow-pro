@@ -1,4 +1,5 @@
-ccxt[pro]>=4.3.0
-redis>=5.0.0
-openai>=1.0.0
-python-dotenv>=1.0.0
+ccxt[pro]
+openai
+fastapi
+uvicorn[standard]
+rich

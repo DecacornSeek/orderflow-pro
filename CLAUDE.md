@@ -121,14 +121,52 @@ ALPHA (Sprint 7+):
 - Kommentare auf Deutsch
 - Nach jedem Sprint: CLAUDE.md updaten mit Decisions + Status
 
+## Architektur-Entscheidung: Broker (asyncio.Queue statt Redis lokal)
+- Lokal (Windows, kein Docker/WSL): core/broker.py — asyncio.Queue als Message Bus
+- Produktion (Hetzner VPS): Redis Pub/Sub wie urspruenglich geplant
+- Die Agent-Interfaces sind identisch — nur broker.publish/subscribe vs redis.publish/subscribe
+- Migration zu Redis: broker.py durch redis-adapter ersetzen, kein Agent-Code aendern
+
+## Tech Stack (aktuell)
+- Data:        ccxt pro (Binance WebSocket)
+- Async:       Python asyncio
+- Message Bus: core/broker.py (asyncio.Queue) lokal / Redis Pub/Sub auf VPS
+- Intelligence: DeepSeek API (signal_agent.py) — kompatibel mit OpenAI SDK
+- Backend:     FastAPI + WebSocket (agents/display_agent.py)
+- Frontend:    static/index.html — TradingView Lightweight Charts + Volume Profile
+- Data Store:  Parquet (data/) + JSONL fuer Signale
+
+## Status Update (2026-06-16)
+Sprint 3 abgeschlossen:
+  - agents/display_agent.py — FastAPI WebSocket Server + static file serving
+  - static/index.html — Live Chart (Kerzen + CVD + Volume Profile) + Signal Log
+  - core/history.py — 60-Minuten Ring Buffer, VAP, historische Kerzen von Binance REST
+  - main.py — Orchestrierung aller Agents, Browser oeffnet automatisch
+
+Sprint 5 (Signal Agent) abgeschlossen:
+  - agents/signal_agent.py — DeepSeek API, alle 15s, Marktkontext-Analyse
+
+Daten-Pipeline abgeschlossen:
+  - agents/logger_agent.py — Trades + Snapshots -> Parquet, Signale -> JSONL
+  - scripts/download_history.py — Binance data.binance.vision, 30 Tage = 107M Trades
+  - scripts/replay_history.py — Replay -> 43.195 Trainings-Samples mit Labels (+5/15/30min)
+
 ## Sprint Status
-Sprint 1: 🔄 IN PROGRESS — Binance Exchange Agent
-Sprint 2: ⏳ Aggregator + CVD
-Sprint 3: ⏳ FastAPI + Heatmap Frontend
-Sprint 4: ⏳ Bybit + OKX Agents
-Sprint 5: ⏳ Signal Agent (Claude API)
-Sprint 6: ⏳ ChromaDB Pattern Memory
-Sprint 7: ⏳ Docker + VPS Deploy
+Sprint 1: COMPLETE — Binance Exchange Agent
+Sprint 2: COMPLETE — Aggregator + CVD
+Sprint 3: COMPLETE — FastAPI + Lightweight Charts Frontend + Volume Profile
+Sprint 4: PENDING — Bybit + OKX Agents
+Sprint 5: COMPLETE — Signal Agent (DeepSeek API)
+Sprint 6: PENDING — ChromaDB Pattern Memory
+Sprint 7: PENDING — Docker + VPS Deploy (Redis Migration)
+
+## Daten-Struktur
+data/
+  historical/trades_YYYY-MM-DD.parquet  # Binance historische Trades (107M+)
+  trades_YYYY-MM-DD.parquet             # Live-Trades vom Logger
+  snapshots_YYYY-MM-DD.parquet          # CVD + L2 Snapshots (1/s)
+  signals_YYYY-MM-DD.jsonl              # Signale + Kontext (LLM Training)
+  training_features.parquet             # 43k Minuten-Features mit Preis-Labels
 
 ┌─────────────────────────────────────────────────┐
 │              ORCHESTRATOR                        │
