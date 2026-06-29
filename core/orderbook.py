@@ -64,6 +64,28 @@ class OrderBook:
         prices = sorted(self.asks.keys())[:n]
         return [(p, self.asks[p]) for p in prices]
 
+    def top(self, n: int) -> Dict[str, Any]:
+        """Return the top *n* bid/ask levels as a JSON-serialisable dict.
+
+        This is the public equivalent of the internal `_top_bids` / `_top_asks`
+        helpers and is used by the exchange agent when publishing L2 snapshots
+        that only need a subset of the full depth.
+
+        Args:
+            n: Number of price levels to return per side.
+
+        Returns:
+            dict with keys `bids` (descending price), `asks` (ascending
+            price), and `last_update_id`.
+        """
+        return {
+            "bids": [[p, s] for p, s in self._top_bids(n)],
+            "asks": [[p, s] for p, s in self._top_asks(n)],
+            "last_update_id": self.last_update_id,
+        }
+
+
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------

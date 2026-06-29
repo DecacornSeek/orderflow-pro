@@ -36,6 +36,21 @@ class DisplayAgent:
                 "vap":    self.history.get_vap(),
             }
 
+        @app.get("/depth-history")
+        async def depth_history(last_n: int = 60):
+            """Return the last N aggregator snapshots with bid/ask depth.
+
+            Each frame: {timestamp, bids: [[price, size], ...], asks: [[price, size], ...]}.
+            Price levels are sorted: bids descending, asks ascending.
+
+            Query params:
+                last_n (int, default 60): Number of frames to return.
+
+            Returns:
+                JSON list of depth frames, newest last.
+            """
+            return self.history.get_depth_frames(last_n)
+
         @app.websocket("/ws")
         async def ws_endpoint(websocket: WebSocket):
             await websocket.accept()
