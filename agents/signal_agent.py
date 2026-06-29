@@ -136,17 +136,17 @@ async def run(broker: Broker, shutdown: asyncio.Event) -> None:
 
     while not shutdown.is_set():
         try:
-            # Drain pending pattern messages
+            # Wait for aggregated snapshot first, then drain patterns accumulated since
+            msg = await asyncio.wait_for(agg_q.get(), timeout=1.0)
+            agg_history.append(msg)
+
+            # Drain patterns accumulated since last tick
             while True:
                 try:
                     pat = pattern_q.get_nowait()
                     pattern_history.append(pat)
                 except asyncio.QueueEmpty:
                     break
-
-            # Get next aggregated snapshot
-            msg = await asyncio.wait_for(agg_q.get(), timeout=1.0)
-            agg_history.append(msg)
 
             now = time.time()
             if len(agg_history) < 3:

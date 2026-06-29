@@ -1,4 +1,4 @@
-"""
+﻿"""
 Pattern Engine - deterministic volume significance + absorption detection.
 
 Loads a weekly volume baseline from data/volume_baseline.parquet (built by
@@ -8,7 +8,7 @@ statistical significance using z-score against the baseline.
 Maintains its own resettable session VAP (same BUCKET=25 logic as core/history.py
 but a separate instance) for tracking intra-session volume per bucket.
 
-If the baseline file is missing, the engine runs in "Baseline fehlt" mode:
+If the baseline file is missing, the engine runs in degraded mode:
 no z-score or absorption detection is performed (returns None for evaluate()),
 but the engine does NOT crash - it logs a warning.
 
@@ -22,7 +22,6 @@ Usage:
 """
 
 import logging
-import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -30,7 +29,8 @@ import pandas as pd
 
 BUCKET = 25
 DEFAULT_Z_THRESHOLD = 2.0
-DEFAULT_ABSORPTION_RATIO = 0.15  # |rolling_delta| / total_window_volume < this => absorption
+DEFAULT_ABSORPTION_RATIO = 0.15
+DEFAULT_MIN_WEEKS = 2  # minimum weeks of baseline data needed to compute a z-score
 
 logger = logging.getLogger(__name__)
 
@@ -47,21 +47,27 @@ class PatternEngine:
     Args:
         z_threshold: Minimum absolute z-score for significance (default 2.0).
         absorption_ratio: Max |delta|/volume ratio for absorption flag (default 0.15).
+        min_weeks: Minimum weeks of baseline data required per bucket (default 2).
+            Buckets with week_count < min_weeks are ineligible for significance.
     """
 
     def __init__(
         self,
         z_threshold: float = DEFAULT_Z_THRESHOLD,
         absorption_ratio: float = DEFAULT_ABSORPTION_RATIO,
+        min_weeks: int = DEFAULT_MIN_WEEKS,
+        baseline_path: Optional[Path] = None,
     ) -> None:
         self.z_threshold = z_threshold
         self.absorption_ratio = absorption_ratio
+        self.min_weeks = min_weeks
+        self._baseline_path = Path(baseline_path) if baseline_path else BASELINE_PATH
 
         # Session VAP (separate from core/history.py)
         self._session_vap: Dict[int, float] = {}
 
-        # Baseline
-        self._baseline: Optional[pd.DataFrame] = None
+        # Baseline: converted to dict for O(1) lookup at load time
+        self._baseline: Optional[Dict[int, Dict[str, float]]] = None
         self._load_baseline()
 
     # ------------------------------------------------------------------
@@ -69,8 +75,11 @@ class PatternEngine:
     # ------------------------------------------------------------------
 
     def _load_baseline(self) -> None:
-        """Load volume baseline from parquet. Logs warning if missing."""
-        path = BASELINE_PATH
+        """Load volume baseline from parquet. Logs warning if missing.
+
+        Converts to dict for O(1) lookup: {price_bucket: {mean, std, week_count}}
+        """
+        path = self._baseline_path
         if not path.exists():
             logger.warning(
                 "PatternEngine: Volume baseline not found at %s. "
@@ -81,7 +90,15 @@ class PatternEngine:
             return
 
         try:
-            self._baseline = pd.read_parquet(path)
+            df = pd.read_parquet(path)
+            self._baseline = {}
+            for _, row in df.iterrows():
+                bucket = int(row["price_bucket"])
+                self._baseline[bucket] = {
+                    "mean": float(row["mean_volume"]),
+                    "std": float(row["std_volume"]),
+                    "week_count": int(row["week_count"]),
+                }
             logger.info(
                 "PatternEngine: Loaded baseline with %d price buckets from %s.",
                 len(self._baseline),
@@ -96,14 +113,48 @@ class PatternEngine:
             )
             self._baseline = None
 
-    def reload_baseline(self) -> None:
+    def reload_baseline(self, path: Optional[Path] = None) -> None:
         """Reload baseline from disk (e.g. after rebuilding)."""
+        if path is not None:
+            self._baseline_path = Path(path)
         self._load_baseline()
 
     @property
     def has_baseline(self) -> bool:
         """True if a valid baseline is loaded."""
         return self._baseline is not None and len(self._baseline) > 0
+
+    # ------------------------------------------------------------------
+    # Baseline diagnostics
+    # ------------------------------------------------------------------
+
+    def count_buckets_below_min_weeks(self) -> int:
+        """Number of buckets with insufficient weeks for reliable statistics."""
+        if not self._baseline:
+            return 0
+        return sum(
+            1 for info in self._baseline.values()
+            if info["week_count"] < self.min_weeks
+        )
+
+    def count_hits_on_weak_baseline(self, hits: list) -> int:
+        """How many hits fall on buckets with week_count < min_weeks.
+
+        Args:
+            hits: List of result dicts from evaluate().
+
+        Returns:
+            Count of hits on weak-baseline buckets.
+        """
+        if not self._baseline:
+            return 0
+        n = 0
+        for hit in hits:
+            bucket = hit.get("price_bucket")
+            info = self._baseline.get(bucket)
+            if info and info["week_count"] < self.min_weeks:
+                n += 1
+        return n
 
     # ------------------------------------------------------------------
     # Session VAP
@@ -158,17 +209,24 @@ class PatternEngine:
         bucket = int(float(price) / BUCKET) * BUCKET
         current_vol = self._session_vap.get(bucket, 0.0)
 
-        # Lookup baseline stats for this bucket
-        row = self._baseline[self._baseline["price_bucket"] == bucket]
-        if row.empty:
+        # Lookup baseline stats for this bucket (O(1) dict lookup)
+        info = self._baseline.get(bucket)  # type: ignore[union-attr]
+        if info is None:
             return None  # No baseline data for this bucket
 
-        mean_vol = float(row.iloc[0]["mean_volume"])
-        std_vol = float(row.iloc[0]["std_volume"])
+        mean_vol = info["mean"]
+        std_vol = info["std"]
+        week_count = info["week_count"]
 
-        # z-score
+        # Bucket must have enough weeks for a reliable baseline
+        if week_count < self.min_weeks:
+            return None
+
+        # Division by zero guard (std = 0 when week_count < 2, but we already
+        # checked min_weeks >= 2, making this a safety net only)
         if std_vol <= 0:
-            return None  # No variability, can't compute z-score
+            return None
+
         z_score = (current_vol - mean_vol) / std_vol
 
         if abs(z_score) < self.z_threshold:

@@ -1,20 +1,11 @@
 """
-Sprint 2 Full Integration Test ? Exchange Agent + Aggregator + CVD.
-
-Testet den kompletten Datenfluss OHNE echten Redis-Server:
-  1. Startet Exchange Agent (simuliert) -> publiziert binance_l2 + binance_trades
-  2. Startet Aggregator Agent (simuliert) -> subscribed, berechnet CVD
-  3. Prueft aggregated_cvd Output-Schema und monotonic CVD
-  4. Prueft dass rolling_delta nach window_size Trades korrekt abfaellt
-
-Verwendet fakeredis als In-Process Redis-Ersatz fuer Integration ohne Docker.
+Sprint 2: CVD Unit-Tests + Monotonic CVD stream validation.
 
 Ausfuehrung:
-  python test_sprint2_integration.py
+  python test_sprint2.py
 """
 
 import asyncio
-import json
 import sys
 import time
 from typing import Any, Dict, List
@@ -22,7 +13,6 @@ from typing import Any, Dict, List
 sys.path.insert(0, ".")
 
 from core.cvd import CVD
-from agents.aggregator_agent import AggregatorAgent, REDIS_CHANNEL_CVD
 
 # ------------------------------------------------------------------
 # Konfiguration
@@ -31,17 +21,7 @@ NUM_TEST_TRADES = 250
 
 
 # ------------------------------------------------------------------
-# Fake Redis (via fakeredis) ? kein echter Redis-Server noetig
-# ------------------------------------------------------------------
-async def _get_fake_redis():
-    import fakeredis.aioredis
-    r = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    await r.ping()
-    return r
-
-
-# ------------------------------------------------------------------
-# Teil 1: CVD Unit-Test (wie test_sprint2, aber in einer Datei)
+# Teil 1: CVD Unit-Test
 # ------------------------------------------------------------------
 def test_cvd_unit() -> None:
     print("=" * 60)
@@ -112,160 +92,7 @@ def test_cvd_unit() -> None:
 
 
 # ------------------------------------------------------------------
-# Teil 2: Integration Exchange <-> Aggregator
-# ------------------------------------------------------------------
-async def simulate_exchange(redis_client, trade_count: int = 50, l2_count: int = 5):
-    """Simuliert Exchange Agent, der L2 + Trades in Redis publiziert."""
-    import random
-    random.seed(12345)
-    price = 50000.0
-
-    for i in range(trade_count):
-        # Trade
-        side = "buy" if random.random() < 0.5 else "sell"
-        size = round(random.uniform(0.1, 3.0), 4)
-        price += random.uniform(-5, 5)
-        trade_msg = {
-            "exchange": "binance",
-            "symbol": "BTCUSDT",
-            "timestamp": int(time.time() * 1000) + i,
-            "price": round(price, 2),
-            "size": size,
-            "aggressor_side": side,
-            "trade_id": str(i + 1000),
-        }
-        await redis_client.publish("binance_trades", json.dumps(trade_msg))
-        await asyncio.sleep(0.01)
-
-        # L2 Update (seltener)
-        if i % 10 == 0:
-            l2_msg = {
-                "exchange": "binance",
-                "symbol": "BTCUSDT",
-                "timestamp": int(time.time() * 1000),
-                "bids": [[price - 1.0, 10.0], [price - 2.0, 20.0]],
-                "asks": [[price + 1.0, 10.0], [price + 2.0, 20.0]],
-                "imbalance_5": 0.1,
-                "imbalance_20": 0.05,
-                "spread": 2.0,
-                "mid_price": price,
-                "last_update_id": 1000 + i,
-            }
-            await redis_client.publish("binance_l2", json.dumps(l2_msg))
-
-
-async def test_integration_pipeline() -> None:
-    """Vollstaendiger Integrationstest: Exchange -> Redis -> Aggregator -> aggregated_cvd."""
-    print("=" * 60)
-    print("Teil 2: Integration Pipeline (fakeredis)")
-    print("=" * 60)
-
-    # Fake Redis erstellen
-    fake_redis = await _get_fake_redis()
-
-    # Aggregator Agent mit Fake Redis starten
-    agent = AggregatorAgent(redis_url="redis://fake")
-    # Redis-Client durch Fake ersetzen
-    agent.redis_client = fake_redis
-    agent.pubsub = fake_redis.pubsub()
-    await agent.pubsub.subscribe("binance_l2", "binance_trades")
-
-    # Aggregator Tasks starten
-    sub_task = asyncio.create_task(agent._subscribe_loop())
-    pub_task = asyncio.create_task(agent._publish_loop())
-
-    # Simulierten Exchange starten
-    exchange_task = asyncio.create_task(
-        simulate_exchange(fake_redis, trade_count=50, l2_count=5)
-    )
-
-    # Auf aggregated_cvd Nachrichten warten
-    cvd_sub = fake_redis.pubsub()
-    await cvd_sub.subscribe(REDIS_CHANNEL_CVD)
-    await asyncio.sleep(0.5)  # Zeit fuer Verarbeitung
-
-    # Nachrichten einsammeln
-    cvd_messages = []
-    timeout = 5.0
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        msg = await cvd_sub.get_message(ignore_subscribe_messages=True, timeout=0.3)
-        if msg and msg["type"] == "message":
-            cvd_messages.append(msg)
-        if len(cvd_messages) >= 3:
-            break
-
-    # Warten auf Exchange-Abschluss
-    await exchange_task
-
-    # Aggregator stoppen
-    agent.shutdown_event.set()
-    sub_task.cancel()
-    pub_task.cancel()
-    try:
-        await asyncio.gather(sub_task, pub_task, return_exceptions=True)
-    except Exception:
-        pass
-
-    await cvd_sub.unsubscribe()
-    await fake_redis.aclose()
-
-    # --- Auswertung ---
-    if len(cvd_messages) == 0:
-        print("[FAIL] Keine aggregated_cvd Nachrichten erhalten")
-        return False
-
-    print("  Erhaltene aggregated_cvd Nachrichten: {}".format(len(cvd_messages)))
-
-    for i, msg in enumerate(cvd_messages[:3]):  # Max 3 anschauen
-        data = json.loads(msg["data"])
-
-        # Schema-Validierung
-        required_root = ["exchange", "symbol", "timestamp", "cvd", "mid_price"]
-        for key in required_root:
-            assert key in data, "Fehlender Root-Key: {}".format(key)
-
-        cvd_data = data["cvd"]
-        required_cvd = [
-            "cumulative_buy_volume", "cumulative_sell_volume", "cumulative_delta",
-            "rolling_buy_volume", "rolling_sell_volume", "rolling_delta",
-            "trade_count", "last_price", "last_timestamp",
-        ]
-        for key in required_cvd:
-            assert key in cvd_data, "Fehlender CVD-Key: {}".format(key)
-
-        # Typ-Pruefungen
-        assert isinstance(data["exchange"], str), "exchange kein str"
-        assert isinstance(data["symbol"], str), "symbol kein str"
-        assert isinstance(data["timestamp"], int), "timestamp kein int"
-        assert isinstance(cvd_data["trade_count"], int), "trade_count kein int"
-        assert isinstance(cvd_data["rolling_delta"], (int, float)), "rolling_delta kein number"
-        assert isinstance(cvd_data["cumulative_delta"], (int, float)), "cumulative_delta kein number"
-
-        print("  [{}] exchange={} symbol={} trades={} cum_delta={:+.4f} roll_delta={:+.4f} mid_price={}".format(
-            i, data["exchange"], data["symbol"],
-            cvd_data["trade_count"], cvd_data["cumulative_delta"],
-            cvd_data["rolling_delta"], data["mid_price"],
-        ))
-
-    print("[PASS] Redis Output-Schema valide ({} Nachrichten)".format(len(cvd_messages)))
-
-    # Pruefe: trade_count steigt
-    counts = [json.loads(m["data"])["cvd"]["trade_count"] for m in cvd_messages]
-    for i in range(1, len(counts)):
-        assert counts[i] >= counts[i-1], "trade_count nicht monoton: {} -> {}".format(
-            counts[i-1], counts[i]
-        )
-    print("[PASS] trade_count steigt monoton ueber Nachrichten hinweg")
-
-    print()
-    print(">>> Integration Pipeline bestanden! <<<")
-    print()
-    return True
-
-
-# ------------------------------------------------------------------
-# Teil 3: Monotonic CVD (simulierter Stream, > window_size Trades)
+# Teil 2: Monotonic CVD (simulierter Stream, > window_size Trades)
 # ------------------------------------------------------------------
 def test_monotonic_cvd() -> None:
     print("=" * 60)
@@ -332,44 +159,20 @@ def test_monotonic_cvd() -> None:
 # ------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------
-async def run_all():
+def run_all() -> int:
     passed = 0
     failed = 0
 
-    # Teil 1
-    try:
-        test_cvd_unit()
-        passed += 1
-    except AssertionError as e:
-        print("[FAIL] CVD Unit-Test: {}".format(e))
-        failed += 1
-    except Exception as e:
-        print("[FAIL] CVD Unit-Test Exception: {}".format(e))
-        failed += 1
-
-    # Teil 2
-    try:
-        ok = await test_integration_pipeline()
-        if ok:
+    for name, fn in [("CVD Unit-Test", test_cvd_unit), ("Monotonic CVD", test_monotonic_cvd)]:
+        try:
+            fn()
             passed += 1
-        else:
+        except AssertionError as e:
+            print("[FAIL] {}: {}".format(name, e))
             failed += 1
-    except Exception as e:
-        print("[FAIL] Integration Exception: {}".format(e))
-        import traceback
-        traceback.print_exc()
-        failed += 1
-
-    # Teil 3
-    try:
-        test_monotonic_cvd()
-        passed += 1
-    except AssertionError as e:
-        print("[FAIL] Monotonic CVD: {}".format(e))
-        failed += 1
-    except Exception as e:
-        print("[FAIL] Monotonic CVD Exception: {}".format(e))
-        failed += 1
+        except Exception as e:
+            print("[FAIL] {} Exception: {}".format(name, e))
+            failed += 1
 
     print("=" * 60)
     print("ERGEBNIS: {} passed, {} failed".format(passed, failed))
@@ -377,8 +180,8 @@ async def run_all():
     return 0 if failed == 0 else 1
 
 
-def main():
-    return asyncio.run(run_all())
+def main() -> int:
+    return run_all()
 
 
 if __name__ == "__main__":

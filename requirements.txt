@@ -3,3 +3,6 @@ openai
 fastapi
 uvicorn[standard]
 rich
+pandas
+pyarrow
+requests

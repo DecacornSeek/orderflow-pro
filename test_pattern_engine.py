@@ -6,9 +6,8 @@ Tests the complete detection pipeline WITHOUT live data:
   3. Absorption flag triggers correctly
   4. Engine runs in degraded mode when baseline missing (no crash)
   5. Integration: PatternEngine via aggregator -> PATTERNS channel
-  6. Signal Agent receives patterns (no API call, just subscription)
-
-Uses fakeredis for Broker-free testing; the Broker is in-process anyway.
+  6. Session VAP reset
+  7. min_weeks guard: buckets with insufficient weeks are skipped
 
 Usage:
   python test_pattern_engine.py
@@ -17,9 +16,6 @@ Usage:
 import asyncio
 import sys
 import time
-import math
-from collections import deque
-from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 sys.path.insert(0, ".")
@@ -27,29 +23,22 @@ sys.path.insert(0, ".")
 import pandas as pd
 
 from core.broker import Broker, PATTERNS, AGGREGATED, TRADES
-from core.pattern_engine import PatternEngine, BUCKET
+from core.pattern_engine import PatternEngine, BUCKET, DEFAULT_MIN_WEEKS
 from core.cvd import CVD
-
-# ------------------------------------------------------------------
-# Constants
-# ------------------------------------------------------------------
-BASE_PRICE = 50000.0
-NUM_TEST_TRADES = 100
-Z_THRESHOLD = 2.0
-ABSORPTION_RATIO = 0.15
 
 
 # ------------------------------------------------------------------
 # Helper: build a synthetic baseline parquet file
 # ------------------------------------------------------------------
-def _build_synthetic_baseline(path: Path) -> None:
+def _build_synthetic_baseline(path: Path, extra_rows: list = None) -> None:
     """Create a synthetic baseline with known mean/std per bucket.
 
-    Bucket 50000: mean=10.0, std=2.0  (main test bucket)
-    Bucket 50100: mean=5.0,  std=1.0
-    Bucket 50200: mean=20.0, std=5.0
+    Default buckets:
+      Bucket 50000: mean=10.0, std=2.0, weeks=4
+      Bucket 50100: mean=5.0,  std=1.0, weeks=4
+      Bucket 50200: mean=20.0, std=5.0, weeks=3
     """
-    rows = [
+    rows = extra_rows or [
         {"price_bucket": 50000, "mean_volume": 10.0, "std_volume": 2.0, "week_count": 4},
         {"price_bucket": 50100, "mean_volume": 5.0,  "std_volume": 1.0, "week_count": 4},
         {"price_bucket": 50200, "mean_volume": 20.0, "std_volume": 5.0, "week_count": 3},
@@ -100,23 +89,20 @@ def test_engine_with_baseline() -> None:
     baseline_path = Path("data/test_baseline.parquet")
     _build_synthetic_baseline(baseline_path)
 
-    import core.pattern_engine as pe_mod
-    original_path = pe_mod.BASELINE_PATH
-    pe_mod.BASELINE_PATH = baseline_path
-
-    engine = PatternEngine(z_threshold=2.0)
+    engine = PatternEngine(z_threshold=2.0, min_weeks=2, baseline_path=baseline_path)
     assert engine.has_baseline, "Engine should have loaded the baseline"
 
     engine.reset_session_vap()
 
-    # Fill bucket 50000 with volume = 14 (mean=10, std=2 => z=2.0, exactly at threshold)
+    # Fill bucket 50000 with volume = 14 (mean=10, std=2 => z=2.0)
     for _ in range(14):
         engine.evaluate({"price": 50000.0, "size": 1.0, "side": "buy", "timestamp": 1000})
 
     bucket = int(50000.0 / BUCKET) * BUCKET
-    row = engine._baseline[engine._baseline["price_bucket"] == bucket]
-    mean_vol = float(row.iloc[0]["mean_volume"])
-    std_vol = float(row.iloc[0]["std_volume"])
+    # After dict conversion, access via _baseline dict
+    info = engine._baseline[bucket]
+    mean_vol = info["mean"]
+    std_vol = info["std"]
     current_vol = engine._session_vap.get(bucket, 0.0)
     z_score = (current_vol - mean_vol) / std_vol
     print(f"  Bucket {bucket}: mean={mean_vol}, std={std_vol}, current={current_vol}, z={z_score:.4f}")
@@ -147,7 +133,6 @@ def test_engine_with_baseline() -> None:
     assert result is None, f"z-score 0.01 should be below threshold, got {result}"
     print("  [PASS] Low volume below threshold returns None")
 
-    pe_mod.BASELINE_PATH = original_path
     _cleanup_baseline(baseline_path)
     print()
 
@@ -161,11 +146,7 @@ def test_absorption_flag() -> None:
     baseline_path = Path("data/test_baseline_abs.parquet")
     _build_synthetic_baseline(baseline_path)
 
-    import core.pattern_engine as pe_mod
-    original_path = pe_mod.BASELINE_PATH
-    pe_mod.BASELINE_PATH = baseline_path
-
-    engine = PatternEngine(z_threshold=2.0, absorption_ratio=0.15)
+    engine = PatternEngine(z_threshold=2.0, absorption_ratio=0.15, min_weeks=2, baseline_path=baseline_path)
     engine.reset_session_vap()
 
     # Push bucket 50000 to significant volume
@@ -210,18 +191,58 @@ def test_absorption_flag() -> None:
     assert result["absorption"] is False, f"Expected absorption=False without CVD snapshot, got {result}"
     print("  [PASS] No CVD snapshot -> absorption defaults to False")
 
-    pe_mod.BASELINE_PATH = original_path
+    _cleanup_baseline(baseline_path)
+    print()
+
+
+def test_min_weeks_guard() -> None:
+    """Buckets with insufficient weeks should never return a pattern hit."""
+    print("=" * 60)
+    print("Part 4: min_weeks guard")
+    print("=" * 60)
+
+    baseline_path = Path("data/test_baseline_weeks.parquet")
+    rows = [
+        {"price_bucket": 50000, "mean_volume": 10.0, "std_volume": 2.0, "week_count": 1},
+        {"price_bucket": 50100, "mean_volume": 10.0, "std_volume": 2.0, "week_count": 2},
+        {"price_bucket": 50200, "mean_volume": 10.0, "std_volume": 2.0, "week_count": 3},
+    ]
+    _build_synthetic_baseline(baseline_path, extra_rows=rows)
+
+    # min_weeks=2: bucket 50000 (week_count=1) should be ineligible
+    engine = PatternEngine(z_threshold=1.0, min_weeks=2, baseline_path=baseline_path)
+    engine.reset_session_vap()
+
+    # Push bucket 50000 well past the z-threshold (volume=30, mean=10, std=2 => z=10)
+    for _ in range(30):
+        engine.evaluate({"price": 50000.0, "size": 1.0, "side": "buy", "timestamp": 1000})
+    result = engine.evaluate({"price": 50000.0, "size": 1.0, "side": "buy", "timestamp": 2000})
+    assert result is None, (
+        f"Bucket with week_count=1 should be ineligible with min_weeks=2, got {result}"
+    )
+    print("  [PASS] Bucket with week_count=1 correctly skipped (below min_weeks=2)")
+
+    # Bucket 50100 (week_count=2, exactly at min_weeks) should be eligible
+    engine.reset_session_vap()
+    for _ in range(30):
+        engine.evaluate({"price": 50100.0, "size": 1.0, "side": "buy", "timestamp": 1000})
+    result = engine.evaluate({"price": 50100.0, "size": 1.0, "side": "buy", "timestamp": 2000})
+    assert result is not None, (
+        f"Bucket with week_count=2 should be eligible with min_weeks=2, got None"
+    )
+    print(f"  [PASS] Bucket with week_count=2 correctly eligible, z={result['z_score']:.2f}")
+
     _cleanup_baseline(baseline_path)
     print()
 
 
 # ------------------------------------------------------------------
-# Part 4: Integration via Broker (PatternEngine -> PATTERNS channel)
+# Part 5: Integration via Broker (PatternEngine -> PATTERNS channel)
 # ------------------------------------------------------------------
 async def test_broker_integration() -> None:
     """Verify patterns are published on the PATTERNS channel."""
     print("=" * 60)
-    print("Part 4: Broker integration (PatternEngine -> PATTERNS)")
+    print("Part 5: Broker integration (PatternEngine -> PATTERNS)")
     print("=" * 60)
 
     baseline_path = Path("data/test_baseline_int.parquet")
@@ -232,12 +253,8 @@ async def test_broker_integration() -> None:
     baseline_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(baseline_path, index=False, compression="snappy")
 
-    import core.pattern_engine as pe_mod
-    original_path = pe_mod.BASELINE_PATH
-    pe_mod.BASELINE_PATH = baseline_path
-
     broker = Broker()
-    engine = PatternEngine(z_threshold=2.0, absorption_ratio=0.15)
+    engine = PatternEngine(z_threshold=2.0, absorption_ratio=0.15, min_weeks=2, baseline_path=baseline_path)
     cvd = CVD(window_size=200)
 
     pattern_q = broker.subscribe(PATTERNS)
@@ -279,18 +296,17 @@ async def test_broker_integration() -> None:
           f"z={msg['z_score']:.2f}, abs={msg['absorption']}")
     print("[PASS] Broker integration works correctly")
 
-    pe_mod.BASELINE_PATH = original_path
     _cleanup_baseline(baseline_path)
     print()
 
 
 # ------------------------------------------------------------------
-# Part 5: Session VAP reset
+# Part 6: Session VAP reset
 # ------------------------------------------------------------------
 def test_session_vap_reset() -> None:
     """Verify session VAP can be reset independently."""
     print("=" * 60)
-    print("Part 5: Session VAP reset")
+    print("Part 6: Session VAP reset")
     print("=" * 60)
 
     engine = PatternEngine()
@@ -314,11 +330,11 @@ async def run_all() -> int:
     passed = 0
     failed = 0
 
-    # Sync tests
     sync_tests = [
         ("Degraded mode", lambda: test_engine_degraded_mode()),
         ("z-score significance", lambda: test_engine_with_baseline()),
         ("Absorption detection", lambda: test_absorption_flag()),
+        ("min_weeks guard", lambda: test_min_weeks_guard()),
         ("Session VAP reset", lambda: test_session_vap_reset()),
     ]
 
@@ -339,7 +355,6 @@ async def run_all() -> int:
             failed += 1
         print()
 
-    # Async tests
     async_tests = [
         ("Broker integration", lambda: test_broker_integration()),
     ]

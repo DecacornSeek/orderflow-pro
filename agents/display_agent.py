@@ -30,7 +30,7 @@ class DisplayAgent:
                 return HTMLResponse(f.read())
 
         @app.get("/history")
-        async def history():
+        async def get_history():
             return {
                 "klines": self.history.get_klines(),
                 "vap":    self.history.get_vap(),
@@ -84,37 +84,35 @@ class DisplayAgent:
         sig_q   = self.broker.subscribe(SIGNALS)
         trade_q = self.broker.subscribe(TRADES)
 
-        while not shutdown.is_set():
-            # --- AGGREGATED ticks ---
+        async def _drain_agg() -> None:
             while True:
-                try:
-                    msg = agg_q.get_nowait()
-                    self.history.add_snapshot(msg)
-                    await self._broadcast({"type": "tick", **msg})
-                except asyncio.QueueEmpty:
-                    break
+                msg = await agg_q.get()
+                self.history.add_snapshot(msg)
+                await self._broadcast({"type": "tick", **msg})
 
-            # --- Trades ---
+        async def _drain_trades() -> None:
             while True:
-                try:
-                    msg = trade_q.get_nowait()
-                    price = msg.get("price")
-                    size  = msg.get("size")
-                    if price and size:
-                        self.history.add_trade(float(price), float(size))
-                    await self._broadcast({"type": "trade", **msg})
-                except asyncio.QueueEmpty:
-                    break
+                msg = await trade_q.get()
+                price = msg.get("price")
+                size  = msg.get("size")
+                if price and size:
+                    self.history.add_trade(float(price), float(size))
+                await self._broadcast({"type": "trade", **msg})
 
-            # --- Signals ---
+        async def _drain_signals() -> None:
             while True:
-                try:
-                    msg = sig_q.get_nowait()
-                    await self._broadcast({"type": "signal", **msg})
-                except asyncio.QueueEmpty:
-                    break
+                msg = await sig_q.get()
+                await self._broadcast({"type": "signal", **msg})
 
-            await asyncio.sleep(0.05)  # 20 Hz pump
+        drain_tasks = [
+            asyncio.create_task(_drain_agg()),
+            asyncio.create_task(_drain_trades()),
+            asyncio.create_task(_drain_signals()),
+        ]
+        await shutdown.wait()
+        for t in drain_tasks:
+            t.cancel()
+        await asyncio.gather(*drain_tasks, return_exceptions=True)
 
     async def run(self, shutdown: asyncio.Event) -> None:
         config = uvicorn.Config(
@@ -129,5 +127,4 @@ class DisplayAgent:
 
         await shutdown.wait()
         server.should_exit = True
-        pump_task.cancel()
         await asyncio.gather(pump_task, server_task, return_exceptions=True)

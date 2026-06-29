@@ -31,67 +31,51 @@ BASELINE_PATH = DATA_DIR / "volume_baseline.parquet"
 BUCKET = 25
 
 
-def _price_bucket(price: float) -> int:
-    """Round price down to the nearest BUCKET-sized bucket."""
-    return int(price / BUCKET) * BUCKET
+def _stream_aggregate(files: list) -> pd.DataFrame:
+    """Aggregate volume per (price_bucket, week) one file at a time to avoid OOM.
 
+    With 107M trades at ~30 bytes/row, loading all at once = ~3.2 GB RAM.
+    Streaming and reducing per file keeps peak usage to one file (~100 MB).
+    """
+    bucket_week: dict = {}
+    total_trades = 0
 
-def load_trades() -> pd.DataFrame:
-    """Load trades from parquet files. Returns DataFrame with columns: timestamp, price, size, side."""
-    # Priority 1: historical data
-    hist_files = sorted(glob.glob(str(HISTORICAL_DIR / "trades_*.parquet")))
-    if hist_files:
-        print(f"Loading {len(hist_files)} historical trade files from {HISTORICAL_DIR}...")
-        dfs = []
-        for f in hist_files:
-            df = pd.read_parquet(f)
-            dfs.append(df)
-        combined = pd.concat(dfs, ignore_index=True)
-        print(f"  Loaded {len(combined):,} historical trades.")
-        return combined
+    for f in files:
+        df = pd.read_parquet(f, columns=["timestamp", "price", "size"])
+        df["price_bucket"] = (df["price"] / BUCKET).astype(int) * BUCKET
+        df["week"] = pd.to_datetime(df["timestamp"], unit="ms").dt.strftime("%G-W%V")
+        for (bucket, week), vol in df.groupby(["price_bucket", "week"])["size"].sum().items():
+            key = (int(bucket), week)
+            bucket_week[key] = bucket_week.get(key, 0.0) + float(vol)
+        total_trades += len(df)
+        del df
 
-    # Priority 2: live-logger data (fallback)
-    live_files = sorted(glob.glob(str(DATA_DIR / "trades_*.parquet")))
-    if live_files:
-        print(
-            "WARNING: No historical data found in data/historical/. Using live-logger data from data/trades_*.parquet. "
-            "Baseline will be based on limited data and may be less statistically robust.",
-            file=sys.stderr,
-        )
-        dfs = []
-        for f in live_files:
-            df = pd.read_parquet(f)
-            dfs.append(df)
-        combined = pd.concat(dfs, ignore_index=True)
-        print(f"  Loaded {len(combined):,} live-logger trades (fallback).")
-        return combined
-
-    raise FileNotFoundError(
-        "No trade data found. Run scripts/download_history.py first, or let the logger agent collect live data."
+    print(f"  Streamed {total_trades:,} trades -> {len(bucket_week)} bucket-week pairs.")
+    return pd.DataFrame(
+        [{"price_bucket": b, "week": w, "weekly_volume": v} for (b, w), v in bucket_week.items()]
     )
 
 
-def build_baseline(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate volume per price bucket per week, compute mean + std."""
-    # Ensure timestamp is in milliseconds and create week label
-    if df["timestamp"].dtype in ("int64", "int32"):
-        df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
+def build_baseline() -> pd.DataFrame:
+    """Build volume baseline from historical (or fallback live) trade files."""
+    hist_files = sorted(glob.glob(str(HISTORICAL_DIR / "trades_*.parquet")))
+    if hist_files:
+        print(f"Streaming {len(hist_files)} historical files from {HISTORICAL_DIR}...")
+        weekly = _stream_aggregate(hist_files)
     else:
-        df["datetime"] = pd.to_datetime(df["timestamp"])
+        live_files = sorted(glob.glob(str(DATA_DIR / "trades_*.parquet")))
+        if not live_files:
+            raise FileNotFoundError(
+                "No trade data found. Run scripts/download_history.py first, "
+                "or let the logger agent collect live data."
+            )
+        print(
+            "WARNING: No historical data found. Using live-logger data (less robust).",
+            file=sys.stderr,
+        )
+        print(f"Streaming {len(live_files)} live files from {DATA_DIR}...")
+        weekly = _stream_aggregate(live_files)
 
-    # Assign price bucket
-    df["price_bucket"] = df["price"].apply(_price_bucket)
-
-    # ISO week label
-    df["week"] = df["datetime"].dt.strftime("%G-W%V")
-
-    # Aggregate volume per bucket per week
-    weekly = df.groupby(["price_bucket", "week"], observed=True)["size"].sum().reset_index()
-    weekly.rename(columns={"size": "weekly_volume"}, inplace=True)
-
-    print(f"  Aggregated {len(weekly)} bucket-week rows from {df['week'].nunique()} weeks.")
-
-    # Compute statistics per bucket
     stats = (
         weekly.groupby("price_bucket", observed=True)["weekly_volume"]
         .agg(["mean", "std", "count"])
@@ -101,10 +85,7 @@ def build_baseline(df: pd.DataFrame) -> pd.DataFrame:
         columns={"mean": "mean_volume", "std": "std_volume", "count": "week_count"},
         inplace=True,
     )
-
-    # std may be NaN if only one week
     stats["std_volume"] = stats["std_volume"].fillna(0.0)
-
     print(f"  Computed baseline for {len(stats)} price buckets.")
     return stats
 
@@ -112,15 +93,8 @@ def build_baseline(df: pd.DataFrame) -> pd.DataFrame:
 def main() -> None:
     BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    print("Loading trade data...")
-    df = load_trades()
-    print(f"  Columns: {list(df.columns)}")
-    print(
-        f"  Date range: {pd.to_datetime(df['timestamp'].min(), unit='ms')} "
-        f"to {pd.to_datetime(df['timestamp'].max(), unit='ms')}"
-    )
-
-    baseline = build_baseline(df)
+    print("Building volume baseline...")
+    baseline = build_baseline()
     baseline.to_parquet(BASELINE_PATH, index=False, compression="snappy")
     size_kb = BASELINE_PATH.stat().st_size / 1024
     print(f"Saved baseline to {BASELINE_PATH} ({size_kb:.1f} KB, {len(baseline)} buckets).")

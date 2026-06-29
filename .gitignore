@@ -37,6 +37,8 @@ dump.rdb
 
 # Trainingsdaten (gross, lokal behalten)
 data/
+# Baseline is a precomputed artifact worth tracking (rebuild takes hours)
+!data/volume_baseline.parquet
 
 # Node (frontend)
 node_modules/

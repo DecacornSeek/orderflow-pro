@@ -42,13 +42,18 @@ async def main() -> None:
     except Exception as e:
         print(f"  Klines nicht verfügbar: {e}")
 
-    # Signal Handler (Ctrl+C)
+    # Windows-compatible signal handling: add_signal_handler raises NotImplementedError
+    # for SIGTERM on Windows; fall back to signal.signal() with call_soon_threadsafe.
     loop = asyncio.get_running_loop()
+
+    def _request_shutdown(sig=None, frame=None) -> None:
+        loop.call_soon_threadsafe(shutdown.set)
+
     for sig in (_signal.SIGINT, _signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, shutdown.set)
-        except NotImplementedError:
-            pass  # Windows
+        except (NotImplementedError, ValueError):
+            _signal.signal(sig, _request_shutdown)
 
     display = DisplayAgent(broker, history)
     logger_agent = LoggerAgent(broker)
@@ -66,6 +71,7 @@ async def main() -> None:
         asyncio.create_task(signal_agent.run(broker, shutdown),      name="signal"),
         asyncio.create_task(display.run(shutdown),                    name="display"),
         asyncio.create_task(logger_agent.run(shutdown),               name="logger"),
+        asyncio.create_task(shutdown.wait(),                          name="shutdown"),
     ]
 
     try:

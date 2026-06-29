@@ -84,8 +84,6 @@ class OrderBook:
             "last_update_id": self.last_update_id,
         }
 
-
-
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -160,19 +158,6 @@ class OrderBook:
         self._trim_asks()
         self.last_update_id = update_id
         return True
-
-    def snapshot(self) -> Dict[str, Any]:
-        """Return a JSON-serialisable view of the current order book.
-
-        Returns:
-            dict with keys ``bids`` (descending price), ``asks`` (ascending
-            price), and ``last_update_id``.
-        """
-        return {
-            "bids": [[p, s] for p, s in self._top_bids(self.depth)],
-            "asks": [[p, s] for p, s in self._top_asks(self.depth)],
-            "last_update_id": self.last_update_id,
-        }
 
     def metrics(self) -> Dict[str, Optional[float]]:
         """Compute real-time market metrics from the book.

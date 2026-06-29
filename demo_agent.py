@@ -68,7 +68,7 @@ async def run():
                     initialized = True
                 else:
                     ob.apply_delta(data["bids"], data["asks"], update_id=update_id)
-                snap    = ob.snapshot()
+                snap    = ob.top(ob.depth)
                 metrics = ob.metrics()
                 payload = {
                     "exchange":       "binance",

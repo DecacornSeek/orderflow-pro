@@ -14,7 +14,7 @@ async def test():
     data = await exchange.watch_order_book("BTC/USDT", limit=100)
     update_id = data.get("nonce") or data.get("last_update_id") or 0
     ob.apply_snapshot(data["bids"], data["asks"], last_update_id=update_id)
-    snap = ob.snapshot()
+    snap = ob.top(ob.depth)
     metrics = ob.metrics()
     print(f"L2 Snapshot OK — bids: {len(snap['bids'])}  asks: {len(snap['asks'])}  (expect 100)")
     print(f"  best bid: {snap['bids'][0]}  best ask: {snap['asks'][0]}")

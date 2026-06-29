@@ -9,6 +9,8 @@ class History:
 
     def __init__(self, max_seconds: int = 3600) -> None:
         self._snapshots: deque = deque(maxlen=max_seconds)
+        # _vap is session-scoped: accumulates from process start, never trimmed.
+        # Bitcoin trades across ~5000 $25-buckets ($10k–$135k range) ≈ 200KB max.
         self._vap: Dict[int, float] = {}   # price_bucket -> cumulative volume
         self._klines: List[dict] = []       # von Binance REST beim Start
 

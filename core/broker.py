@@ -13,6 +13,12 @@ class Broker:
         self._subscribers.setdefault(channel, []).append(q)
         return q
 
+    def unsubscribe(self, channel: str, queue: asyncio.Queue) -> None:
+        try:
+            self._subscribers.get(channel, []).remove(queue)
+        except ValueError:
+            pass
+
     async def publish(self, channel: str, message: dict) -> None:
         for q in self._subscribers.get(channel, []):
             if q.full():

@@ -11,8 +11,11 @@ Das CVD-Modul pflegt:
 Alle Werte sind über snapshot() serialisierbar → Redis Pub/Message.
 """
 
+import logging
 from collections import deque
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class CVD:
@@ -59,6 +62,11 @@ class CVD:
         Returns:
             snapshot der aktuellen Metriken (siehe snapshot()).
         """
+        aggressor_side = str(aggressor_side).lower()
+        if aggressor_side not in ("buy", "sell"):
+            logger.warning("CVD.update: unrecognised aggressor_side %r, treating as sell", aggressor_side)
+            aggressor_side = "sell"
+
         delta = size if aggressor_side == "buy" else -size
 
         # Kumuliert
