@@ -1,17 +1,14 @@
-"""
-Logger Agent — speichert Live-Daten für späteres Training.
+﻿"""
+Logger Agent — speichert Live-Daten für späteres Training + Market Structure Context.
 
 Schreibt:
-  data/trades_YYYY-MM-DD.parquet      — rohe Trades (Preis, Size, Side)
-  data/snapshots_YYYY-MM-DD.parquet   — CVD + L2 Metriken (1/s)
-  data/signals_YYYY-MM-DD.jsonl       — Signal + Marktkontext (LLM Training)
+  data/trades_YYYY-MM-DD.parquet          — rohe Trades
+  data/snapshots_YYYY-MM-DD.parquet       — CVD + L2 + Context Layer Metriken
+  data/signals_YYYY-MM-DD.jsonl           — Signal + Context (LLM Training)
 
-Jede Signal-Zeile in JSONL:
-  {timestamp, context: {mid_price, imbalance_5, imbalance_20, rolling_delta,
-   cumulative_delta, cvd_ratio, bids_top5, asks_top5}, signal, price_at_signal,
-   price_5min_later: null, price_15min_later: null}
-
-price_X_later wird nachträglich per scripts/label_signals.py befüllt.
+Die Context-Layer-Felder (session, weekly, shape, composite, divergence) werden
+sowohl in Snapshots als auch in Signal-JSONL gespeichert, damit sie für
+nachgelagerte Analyse und Labeling zur Verfügung stehen.
 """
 
 import asyncio
@@ -29,8 +26,8 @@ from core.broker import Broker, TRADES, AGGREGATED, SIGNALS
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent.parent / "data"
-FLUSH_INTERVAL = 60   # Sekunden zwischen Parquet-Flushes
-BUFFER_MAX     = 1000  # erzwungener Flush bei N Trades
+FLUSH_INTERVAL = 60
+BUFFER_MAX     = 1000
 
 
 class LoggerAgent:
@@ -39,10 +36,8 @@ class LoggerAgent:
         self.broker = broker
         self._trade_buf:    List[dict] = []
         self._snapshot_buf: List[dict] = []
-        self._last_snapshot: dict = {}   # aktueller Marktkontext für Signal-Logs
+        self._last_snapshot: dict = {}
         DATA_DIR.mkdir(exist_ok=True)
-
-    # ── Hilfsmethoden ────────────────────────────────────────────────────────
 
     @staticmethod
     def _today() -> str:
@@ -63,36 +58,37 @@ class LoggerAgent:
             df = new_df
         df.to_parquet(path, index=False, compression="snappy")
 
-    # ── Flush Trades ──────────────────────────────────────────────────────────
-
     def _flush_trades(self) -> None:
         if not self._trade_buf:
             return
         path = DATA_DIR / f"trades_{self._today()}.parquet"
         self._parquet_append(path, self._trade_buf)
-        logger.debug("Trades gespeichert: %d → %s", len(self._trade_buf), path.name)
+        logger.debug("Trades gespeichert: %d -> %s", len(self._trade_buf), path.name)
         self._trade_buf.clear()
-
-    # ── Flush Snapshots ───────────────────────────────────────────────────────
 
     def _flush_snapshots(self) -> None:
         if not self._snapshot_buf:
             return
         path = DATA_DIR / f"snapshots_{self._today()}.parquet"
         self._parquet_append(path, self._snapshot_buf)
-        logger.debug("Snapshots gespeichert: %d → %s", len(self._snapshot_buf), path.name)
+        logger.debug("Snapshots gespeichert: %d -> %s", len(self._snapshot_buf), path.name)
         self._snapshot_buf.clear()
-
-    # ── Signal als JSONL speichern ────────────────────────────────────────────
 
     def _log_signal(self, signal_msg: dict) -> None:
         snap = self._last_snapshot
         cvd  = snap.get("cvd", {})
 
+        # Extract context layer fields (flattened for JSONL)
+        session_ctx = snap.get("session_context", {})
+        weekly_ctx = snap.get("weekly_context", {})
+        shape_ctx = snap.get("profile_shape", {})
+        composite_ctx = snap.get("composite_context", {})
+        divergence = snap.get("divergence")
+
         record = {
-            "timestamp":      signal_msg.get("timestamp"),
-            "signal":         signal_msg.get("text", ""),
-            "level":          signal_msg.get("level", "info"),
+            "timestamp": signal_msg.get("timestamp"),
+            "signal": signal_msg.get("text", ""),
+            "level": signal_msg.get("level", "info"),
             "price_at_signal": snap.get("mid_price"),
             "context": {
                 "mid_price":        snap.get("mid_price"),
@@ -105,8 +101,29 @@ class LoggerAgent:
                 "trade_count":      cvd.get("trade_count"),
                 "bids_top5":        snap.get("bids", [])[:5],
                 "asks_top5":        snap.get("asks", [])[:5],
+                # Context Layer
+                "session":          session_ctx.get("session"),
+                "session_poc":      session_ctx.get("session_poc"),
+                "session_va_high":  session_ctx.get("session_value_area_high"),
+                "session_va_low":   session_ctx.get("session_value_area_low"),
+                "price_in_va":      session_ctx.get("price_in_value_area"),
+                "price_vs_poc":     session_ctx.get("price_vs_poc"),
+                "initial_balance_high": session_ctx.get("initial_balance_high"),
+                "initial_balance_low":  session_ctx.get("initial_balance_low"),
+                "poc_drift_ratio":  session_ctx.get("poc_drift_ratio"),
+                "pre_session_anomaly": session_ctx.get("pre_session_anomaly"),
+                "week":             weekly_ctx.get("week"),
+                "week_poc":         weekly_ctx.get("week_poc"),
+                "week_va_high":     weekly_ctx.get("week_value_area_high"),
+                "week_va_low":      weekly_ctx.get("week_value_area_low"),
+                "price_in_week_va": weekly_ctx.get("price_in_week_value_area"),
+                "profile_shape":    shape_ctx.get("shape"),
+                "composite_poc":    composite_ctx.get("composite_poc"),
+                "composite_balance_flag": composite_ctx.get("balance_flag"),
+                "composite_hvn_count":    len(composite_ctx.get("hvn_zones", [])),
+                "composite_lvn_count":    len(composite_ctx.get("lvn_zones", [])),
+                "divergence_type":  divergence.get("divergence_type") if divergence else None,
             },
-            # Nachträglich befüllen mit scripts/label_signals.py
             "price_5min_later":  None,
             "price_15min_later": None,
             "price_30min_later": None,
@@ -119,19 +136,15 @@ class LoggerAgent:
         ts = self._ts_to_hms(record["timestamp"])
         logger.warning("Signal geloggt [%s]: %s", ts, record["signal"][:60])
 
-    # ── Haupt-Loop ────────────────────────────────────────────────────────────
-
     async def run(self, shutdown: asyncio.Event) -> None:
         trade_q    = self.broker.subscribe(TRADES)
         snapshot_q = self.broker.subscribe(AGGREGATED)
         signal_q   = self.broker.subscribe(SIGNALS)
 
         last_flush = asyncio.get_event_loop().time()
-        logger.warning("Logger Agent gestartet → %s", DATA_DIR)
+        logger.warning("Logger Agent gestartet -> %s", DATA_DIR)
 
         while not shutdown.is_set():
-
-            # --- Trades buffern ---
             while True:
                 try:
                     msg = trade_q.get_nowait()
@@ -145,13 +158,18 @@ class LoggerAgent:
                 except asyncio.QueueEmpty:
                     break
 
-            # --- Snapshots buffern + letzten Kontext halten ---
             while True:
                 try:
                     msg = snapshot_q.get_nowait()
                     self._last_snapshot = msg
                     cvd = msg.get("cvd", {})
-                    self._snapshot_buf.append({
+                    session_ctx = msg.get("session_context", {})
+                    weekly_ctx = msg.get("weekly_context", {})
+                    shape_ctx = msg.get("profile_shape", {})
+                    composite_ctx = msg.get("composite_context", {})
+                    divergence = msg.get("divergence")
+
+                    snap_row = {
                         "timestamp":        msg.get("timestamp"),
                         "mid_price":        msg.get("mid_price"),
                         "spread":           msg.get("spread"),
@@ -163,11 +181,33 @@ class LoggerAgent:
                         "cumulative_delta": cvd.get("cumulative_delta"),
                         "cvd_ratio":        cvd.get("cvd_ratio"),
                         "trade_count":      cvd.get("trade_count"),
-                    })
+                        # Context Layer
+                        "session":          session_ctx.get("session"),
+                        "session_poc":      session_ctx.get("session_poc"),
+                        "session_va_high":  session_ctx.get("session_value_area_high"),
+                        "session_va_low":   session_ctx.get("session_value_area_low"),
+                        "price_in_va":      session_ctx.get("price_in_value_area"),
+                        "price_vs_poc":     session_ctx.get("price_vs_poc"),
+                        "ib_high":          session_ctx.get("initial_balance_high"),
+                        "ib_low":           session_ctx.get("initial_balance_low"),
+                        "poc_drift_ratio":  session_ctx.get("poc_drift_ratio"),
+                        "anomaly_factor":   (
+                            session_ctx.get("pre_session_anomaly", {}).get("anomaly_factor")
+                            if session_ctx.get("pre_session_anomaly") else None
+                        ),
+                        "week":             weekly_ctx.get("week"),
+                        "week_poc":         weekly_ctx.get("week_poc"),
+                        "week_va_high":     weekly_ctx.get("week_value_area_high"),
+                        "week_va_low":      weekly_ctx.get("week_value_area_low"),
+                        "profile_shape":    shape_ctx.get("shape"),
+                        "composite_poc":    composite_ctx.get("composite_poc"),
+                        "composite_balance": composite_ctx.get("balance_flag"),
+                        "divergence_type":  divergence.get("divergence_type") if divergence else None,
+                    }
+                    self._snapshot_buf.append(snap_row)
                 except asyncio.QueueEmpty:
                     break
 
-            # --- Signale sofort als JSONL schreiben ---
             while True:
                 try:
                     msg = signal_q.get_nowait()
@@ -175,7 +215,6 @@ class LoggerAgent:
                 except asyncio.QueueEmpty:
                     break
 
-            # --- Flush wenn Zeit oder Buffer voll ---
             now = asyncio.get_event_loop().time()
             if now - last_flush >= FLUSH_INTERVAL or len(self._trade_buf) >= BUFFER_MAX:
                 self._flush_trades()
@@ -184,7 +223,6 @@ class LoggerAgent:
 
             await asyncio.sleep(0.5)
 
-        # Finaler Flush beim Shutdown
         self._flush_trades()
         self._flush_snapshots()
         logger.warning("Logger Agent gestoppt. Daten gesichert.")
