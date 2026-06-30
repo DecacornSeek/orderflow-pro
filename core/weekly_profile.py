@@ -65,6 +65,8 @@ class WeeklyProfile:
         self._trade_count: int = 0
         self._last_poc_snapshot_ms: int = 0
         self._poc_drift: List[int] = []
+        self._price_min: Optional[float] = None
+        self._price_max: Optional[float] = None
 
         # Archived weekly profiles
         self._archived: deque = deque(maxlen=52)
@@ -73,24 +75,52 @@ class WeeklyProfile:
     # Ingestion
     # ------------------------------------------------------------------
 
+    def _reset_week(self, ws_ms: int, ws_label: str, ts_ms: int) -> None:
+        self._prices = []
+        self._vap = {}
+        self._start_ms = ws_ms
+        self._label = ws_label
+        self._trade_count = 0
+        self._last_poc_snapshot_ms = ts_ms
+        self._poc_drift = []
+        self._price_min = None
+        self._price_max = None
+
+    def _compute_regime(self) -> str:
+        """Balanced/imbalanced heuristic based on value-area width vs price range."""
+        if not self._vap or not self._prices:
+            return "neutral"
+        va_h, va_l = _compute_value_area(self._vap, self.value_area_pct)
+        if va_h is None or va_l is None:
+            return "neutral"
+        current_bucket = _bucket(self._prices[-1])
+        if current_bucket > va_h:
+            return "imbalanced_up"
+        if current_bucket < va_l:
+            return "imbalanced_down"
+        p_min = self._price_min if self._price_min is not None else min(self._prices)
+        p_max = self._price_max if self._price_max is not None else max(self._prices)
+        price_range = p_max - p_min
+        if price_range == 0:
+            return "balanced"
+        return "balanced" if (va_h - va_l) / price_range >= 0.5 else "imbalanced"
+
     def ingest(self, timestamp: int, price: float, size: float, side: str) -> None:
         """Process a single trade."""
         ws_ms, ws_label = _week_start_ms(timestamp)
 
         if ws_label != self._label:
             self._archive_current()
-            self._prices = []
-            self._vap = {}
-            self._start_ms = ws_ms
-            self._label = ws_label
-            self._trade_count = 0
-            self._last_poc_snapshot_ms = timestamp
-            self._poc_drift = []
+            self._reset_week(ws_ms, ws_label, timestamp)
 
         bk = _bucket(price)
         self._vap[bk] = self._vap.get(bk, 0.0) + size
         self._prices.append(price)
         self._trade_count += 1
+        if self._price_min is None or price < self._price_min:
+            self._price_min = price
+        if self._price_max is None or price > self._price_max:
+            self._price_max = price
 
         if timestamp - self._last_poc_snapshot_ms >= self.poc_drift_interval_s * 1000:
             poc = _compute_poc(self._vap)
@@ -151,6 +181,7 @@ class WeeklyProfile:
             },
         }
 
+        ctx["regime"] = self._compute_regime()
         if current_price is not None:
             ctx["week_price"] = current_price
             if poc is not None:
@@ -159,6 +190,26 @@ class WeeklyProfile:
                 ctx["price_in_week_value_area"] = va_l <= current_price <= va_h
 
         return ctx
+
+    def ingest_trade(self, price: float, size: float, ts_ms: int) -> None:
+        """Simplified trade ingestion without side (side unused for VAP computation)."""
+        self.ingest(ts_ms, price, size, "buy")
+
+    def snapshot(self) -> dict:
+        """Return current context snapshot (canonical PR4a interface)."""
+        return self.current_context()
+
+    def reset_if_needed(self, ts_ms: int) -> bool:
+        """Archive and reset if ts_ms falls in a different week than current.
+
+        Returns True if a reset occurred.
+        """
+        ws_ms, ws_label = _week_start_ms(ts_ms)
+        if ws_label != self._label:
+            self._archive_current()
+            self._reset_week(ws_ms, ws_label, ts_ms)
+            return True
+        return False
 
     def get_archived_profiles(self) -> List[ProfileSnapshot]:
         return list(self._archived)

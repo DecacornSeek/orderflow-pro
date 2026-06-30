@@ -136,7 +136,7 @@ ALPHA (Sprint 7+):
 - Frontend:    static/index.html — TradingView Lightweight Charts + Volume Profile
 - Data Store:  Parquet (data/) + JSONL fuer Signale
 
-## Status Update (2026-06-16)
+## Status Update (2026-06-30)
 Sprint 3 abgeschlossen:
   - agents/display_agent.py — FastAPI WebSocket Server + static file serving
   - static/index.html — Live Chart (Kerzen + CVD + Volume Profile) + Signal Log
@@ -151,6 +151,49 @@ Daten-Pipeline abgeschlossen:
   - scripts/download_history.py — Binance data.binance.vision, 30 Tage = 107M Trades
   - scripts/replay_history.py — Replay -> 43.195 Trainings-Samples mit Labels (+5/15/30min)
 
+## Architektur-Haertung (PR1.x + PR4a) — COMPLETE 2026-06-30
+
+### PR1.1 — Runtime Contract Enforcement (TRADES + AGGREGATED)
+  - core/validators.py — validate_trade_event(), validate_l2_snapshot(),
+    validate_aggregated_snapshot() — alle geben (bool, str) zurueck
+  - core/metrics.py — in-process Counter Dict; increment/get/snapshot/reset_all;
+    benannte Konstanten fuer alle Keys
+  - agents/exchange_agent.py — validate vor jedem broker.publish (TRADES + L2);
+    skip + increment bei Fehler
+  - agents/aggregator_agent.py — validate vor AGGREGATED publish; skip + increment
+  - agents/display_agent.py — GET /metrics Endpoint (alle Counter als JSON)
+  - test_pr1_1.py — 23 Tests; Validators unit, Counter unit, Integration loops,
+    /metrics Endpoint
+
+### PR4a — Context Layer: Session + Weekly Profiles
+  - core/session_profile.py: ingest_trade(), snapshot(), reset_if_needed(),
+    _compute_regime() — neu; "regime" Feld in current_context() Output
+  - core/weekly_profile.py: identisches Interface; _week_start_ms() Anker
+    Sonntag 22:00 UTC; _reset_week() Helper fuer DRY Reset
+  - agents/aggregator_agent.py: per-Modul try/except fuer session + weekly;
+    _throttled_warn() (1 Log pro Key pro 60s, Counter zaehlt immer);
+    neue Counter: context_session_fail_total, context_weekly_fail_total,
+    context_fallback_total
+  - tests/__init__.py, tests/test_session_profile.py (37 Asserts),
+    tests/test_weekly_profile.py (30 Asserts),
+    tests/test_boundaries.py (38 Asserts — UTC midnight + Sonntag 22:00)
+
+### PR4a Verification Scripts
+  - scripts/verify_pr4a_contract.py — Payload vor/nach, Legacy-Felder 15/15,
+    nur additive "regime" Keys; PASS
+  - scripts/verify_pr4a_isolation.py — session exception Zyklen 1-3, weekly
+    immer gueltig, Throttle 3 Fehler -> 1 Log; PASS (9/9)
+  - scripts/verify_pr4a_perf.py — 10k Trades in 233ms (42k trades/s),
+    Publish p99=2.5ms, Budget-Margin 333x bei 1Hz; PASS
+
+### Regime Heuristik (session + weekly)
+  - Bucket-Vergleich: _bucket(last_price) > va_h -> imbalanced_up
+  - _bucket(last_price) < va_l -> imbalanced_down
+  - innerhalb VA und Breite >= 50% price_range -> balanced
+  - sonst -> imbalanced; keine Daten -> neutral
+
+### Naechster Schritt: PR4b (Bybit + OKX Agents)
+
 ## Sprint Status
 Sprint 1: COMPLETE — Binance Exchange Agent
 Sprint 2: COMPLETE — Aggregator + CVD
@@ -159,6 +202,8 @@ Sprint 4: PENDING — Bybit + OKX Agents
 Sprint 5: COMPLETE — Signal Agent (DeepSeek API)
 Sprint 6: PENDING — ChromaDB Pattern Memory
 Sprint 7: PENDING — Docker + VPS Deploy (Redis Migration)
+PR1.x:   COMPLETE — Contract Validation + Metrics + /metrics Endpoint
+PR4a:    COMPLETE — Session/Weekly Context Layer + Regime + 105 Tests verified
 
 ## Daten-Struktur
 data/

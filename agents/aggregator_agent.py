@@ -11,6 +11,8 @@ import logging
 import time
 
 from core.broker import Broker, L2, TRADES, AGGREGATED, PATTERNS
+from core.validators import validate_aggregated_snapshot
+import core.metrics as metrics
 from core.cvd import CVD
 from core.pattern_engine import PatternEngine
 from core.session_profile import SessionProfile
@@ -23,6 +25,18 @@ from core.composite_profile import CompositeProfile
 logger = logging.getLogger(__name__)
 
 PUBLISH_INTERVAL = 1.0
+
+# Throttle repeated context-failure warnings: one log per key per 60 s.
+# Counter is still incremented on every failure — the counter is the source of truth.
+_warned_at: dict[str, float] = {}
+_WARN_COOLDOWN = 60.0
+
+
+def _throttled_warn(key: str, msg: str, *args: object) -> None:
+    now = time.monotonic()
+    if now - _warned_at.get(key, 0.0) >= _WARN_COOLDOWN:
+        logger.warning(msg, *args)
+        _warned_at[key] = now
 
 
 async def run(broker: Broker, shutdown: asyncio.Event) -> None:
@@ -139,28 +153,29 @@ async def _publish_loop(
                     snap.get("rolling_delta", 0.0),
                 )
 
-            # Session context
-            session_ctx = session.current_context()
-
-            # Pre-session anomaly
-            session_name = session_ctx.get("session", "")
-            anomaly = session.get_pre_session_anomaly(session_name)
-            if anomaly:
-                session_ctx["pre_session_anomaly"] = anomaly
-
-            # Profile shape from session VAP
-            shape_ctx = classify_shape(
-                session_ctx.get("session_poc") is not None and hasattr(session, "_vap") and session._vap or None
-            )
-            # Better: use the archived profiles and current VAP
-            # Build shape from the current session's VAP
-            if session.current_session and session._vap:
-                shape_ctx = classify_shape(session._vap)
-            else:
+            # Session context — isolated so a module failure doesn't suppress the publish
+            try:
+                session_ctx = session.current_context()
+                session_name = session_ctx.get("session", "")
+                anomaly = session.get_pre_session_anomaly(session_name)
+                if anomaly:
+                    session_ctx["pre_session_anomaly"] = anomaly
+                shape_ctx = classify_shape(session._vap if session.current_session and session._vap else None)
+            except Exception as e:
+                _throttled_warn("session_ctx", "session context failed: %s", e)
+                metrics.increment(metrics.CONTEXT_SESSION_FAIL)
+                metrics.increment(metrics.CONTEXT_FALLBACK)
+                session_ctx = {"session": "N/A"}
                 shape_ctx = classify_shape(None)
 
             # Weekly context
-            weekly_ctx = weekly.current_context()
+            try:
+                weekly_ctx = weekly.current_context()
+            except Exception as e:
+                _throttled_warn("weekly_ctx", "weekly context failed: %s", e)
+                metrics.increment(metrics.CONTEXT_WEEKLY_FAIL)
+                metrics.increment(metrics.CONTEXT_FALLBACK)
+                weekly_ctx = {"week": "N/A"}
 
             # Composite context from archived profiles
             archived = session.get_archived_profiles()
@@ -193,6 +208,12 @@ async def _publish_loop(
                 "composite_context": composite_ctx,
                 "divergence": div,
             }
+            ok, reason = validate_aggregated_snapshot(payload)
+            if not ok:
+                logger.warning("Aggregated snapshot ungültig — übersprungen: %s | keys=%s", reason, list(payload.keys()))
+                metrics.increment(metrics.VALIDATION_AGGREGATED_FAILED)
+                metrics.increment(metrics.MESSAGES_SKIPPED)
+                continue
             await broker.publish(AGGREGATED, payload)
         except Exception as e:
             logger.warning(f"Aggregator publish error: {e}")

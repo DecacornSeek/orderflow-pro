@@ -148,6 +148,8 @@ class SessionProfile:
         self._last_poc_snapshot_ms: int = 0
         self._poc_drift: List[int] = []
         self._trade_count_in_session: int = 0
+        self._price_min: Optional[float] = None
+        self._price_max: Optional[float] = None
 
         self._archived: deque = deque(maxlen=60)
 
@@ -171,6 +173,10 @@ class SessionProfile:
         self._vap[bk] = self._vap.get(bk, 0.0) + size
         self._prices.append(price)
         self._trade_count_in_session += 1
+        if self._price_min is None or price < self._price_min:
+            self._price_min = price
+        if self._price_max is None or price > self._price_max:
+            self._price_max = price
 
         if not self._ib_complete and self._session_start_ms is not None:
             elapsed_min = (timestamp - self._session_start_ms) / 60_000
@@ -201,6 +207,28 @@ class SessionProfile:
         self._last_poc_snapshot_ms = timestamp
         self._poc_drift = []
         self._trade_count_in_session = 0
+        self._price_min = None
+        self._price_max = None
+
+    def _compute_regime(self) -> str:
+        """Balanced/imbalanced heuristic based on value-area width vs price range."""
+        if not self._vap or not self._prices:
+            return "neutral"
+        va_h, va_l = _compute_value_area(self._vap, self.value_area_pct)
+        if va_h is None or va_l is None:
+            return "neutral"
+        # Use bucket of current price so comparison stays on the same grid as VA
+        current_bucket = _bucket(self._prices[-1])
+        if current_bucket > va_h:
+            return "imbalanced_up"
+        if current_bucket < va_l:
+            return "imbalanced_down"
+        p_min = self._price_min if self._price_min is not None else min(self._prices)
+        p_max = self._price_max if self._price_max is not None else max(self._prices)
+        price_range = p_max - p_min
+        if price_range == 0:
+            return "balanced"
+        return "balanced" if (va_h - va_l) / price_range >= 0.5 else "imbalanced"
 
     def _archive_current(self) -> None:
         if self.current_session is None or not self._prices:
@@ -311,6 +339,7 @@ class SessionProfile:
             "session_ohlc": {"open": ohlc["open"], "high": ohlc["high"],
                              "low": ohlc["low"], "close": ohlc["close"]},
         }
+        ctx["regime"] = self._compute_regime()
         if current_price is not None and poc is not None:
             ctx["price_vs_poc"] = round(current_price - poc, 2)
         if current_price is not None and va_h is not None and va_l is not None:
@@ -325,6 +354,27 @@ class SessionProfile:
             ctx["poc_drift_buckets"] = drift_range
             ctx["poc_drift_ratio"] = round(drift_range / total_range * BUCKET, 4) if total_range > 0 else 0
         return ctx
+
+    def ingest_trade(self, price: float, size: float, ts_ms: int) -> None:
+        """Simplified trade ingestion without side (side unused for VAP computation)."""
+        self.ingest(ts_ms, price, size, "buy")
+
+    def snapshot(self) -> dict:
+        """Return current context snapshot (canonical PR4a interface)."""
+        return self.current_context()
+
+    def reset_if_needed(self, ts_ms: int) -> bool:
+        """Archive and reset if ts_ms falls in a different session than current.
+
+        Returns True if a reset occurred.
+        """
+        dt = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+        session_name = session_name_for_hour(dt.hour)
+        if session_name != self.current_session:
+            self._archive_current()
+            self._reset_current(session_name, ts_ms)
+            return True
+        return False
 
     def get_archived_profiles(self) -> List[ProfileSnapshot]:
         return list(self._archived)

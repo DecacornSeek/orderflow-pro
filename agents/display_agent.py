@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from core.broker import Broker, AGGREGATED, SIGNALS, TRADES
 from core.history import History
+import core.metrics as _metrics
 
 logger = logging.getLogger(__name__)
 STATIC = os.path.join(os.path.dirname(__file__), "..", "static", "index.html")
@@ -35,6 +36,10 @@ class DisplayAgent:
                 "klines": self.history.get_klines(),
                 "vap":    self.history.get_vap(),
             }
+
+        @app.get("/metrics")
+        async def get_metrics():
+            return _metrics.snapshot()
 
         @app.get("/depth-history")
         async def depth_history(last_n: int = 60):

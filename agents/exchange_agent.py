@@ -6,6 +6,8 @@ import ccxt.pro as ccxtpro
 
 from core.broker import Broker, L2, TRADES
 from core.orderbook import OrderBook
+from core.validators import validate_trade_event, validate_l2_snapshot
+import core.metrics as _metrics
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +42,20 @@ async def _l2_loop(exchange, broker: Broker, book: OrderBook, shutdown: asyncio.
             metrics = book.metrics()
             top = book.top(20)
 
-            await broker.publish(L2, {
+            l2_event = {
                 "exchange": "binance",
                 "timestamp": ob.get("timestamp") or int(time.time() * 1000),
                 "bids": top["bids"],
                 "asks": top["asks"],
                 **metrics,
-            })
+            }
+            ok, reason = validate_l2_snapshot(l2_event)
+            if not ok:
+                logger.warning("L2 snapshot ungültig — übersprungen: %s | keys=%s", reason, list(l2_event.keys()))
+                _metrics.increment(_metrics.VALIDATION_L2_FAILED)
+                _metrics.increment(_metrics.MESSAGES_SKIPPED)
+            else:
+                await broker.publish(L2, l2_event)
             backoff = 1.0
 
         except Exception as e:
@@ -65,13 +74,20 @@ async def _trade_loop(exchange, broker: Broker, shutdown: asyncio.Event) -> None
             for t in trades:
                 info = t.get("info", {})
                 side = "sell" if info.get("m", False) else "buy"
-                await broker.publish(TRADES, {
+                event = {
                     "exchange": "binance",
                     "timestamp": t.get("timestamp") or int(time.time() * 1000),
                     "price": t.get("price"),
                     "size": t.get("amount"),
                     "side": side,
-                })
+                }
+                ok, reason = validate_trade_event(event)
+                if not ok:
+                    logger.warning("Trade event ungültig — übersprungen: %s | payload=%r", reason, event)
+                    _metrics.increment(_metrics.VALIDATION_TRADE_FAILED)
+                    _metrics.increment(_metrics.MESSAGES_SKIPPED)
+                    continue
+                await broker.publish(TRADES, event)
             backoff = 1.0
 
         except Exception as e:
