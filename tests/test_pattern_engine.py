@@ -65,7 +65,8 @@ def test_engine_degraded_mode() -> None:
     print("Part 1: Degraded mode (no baseline)")
     print("=" * 60)
 
-    engine = PatternEngine()
+    # Point engine at a non-existent baseline so it starts in degraded mode
+    engine = PatternEngine(baseline_path="data/_nonexistent_baseline.parquet")
     assert not engine.has_baseline, "Engine should have no baseline"
 
     # Calling evaluate should not crash

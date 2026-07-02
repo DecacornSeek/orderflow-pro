@@ -1,0 +1,67 @@
+Technical Requirements
+
+
+The NCI Candle Signal Taxonomy
+The NCI framework ignores traditional candlestick nomenclature in favor of a "pressure-first" taxonomy. We analyze the relationship between the candle body and total length to filter out low-probability setups. This ensures the system only reacts to signals demonstrating genuine institutional commitment.
+Primary Candle Classifications
+Marubozu (High Pressure):
+Standard: The body must constitute at least 70% of the total candle length.
+Strategic Role: This signifies absolute dominance and serves as the primary engine for pulse waves and breakout validation.
+Special Marubozu (Shock Move):
+Standard: The body must be at least 50% of the total length.
+Mathematical Requirement: Using a Fibonacci retracement from low to high, the closing price must reside within the 0.9 to 1.0 (90%–100%) range.
+Strategic Role: This is a "shock move" signifying extreme speed and volatility, where price absorbs all opposing pressure in a single window.
+Pinbar and Doji (Indecision & No Power):
+Pinbar (High Fluctuation): Defined by a body less than 50% of the total length. It represents a struggle between buyers and sellers where neither has gained control.
+Doji (No Power): A small candle with negligible body and length. It indicates a total lack of institutional interest or participation.
+The Role of Candle Color
+In the NCI system, color is critical for Marubozu candles as it defines the direction of institutional pressure. Conversely, the color of Dojis and Pinbars is treated as noise and ignored; these signals represent structural indecision regardless of the closing color.
+Individual candles only become actionable when they aggregate into valid market movements, specifically the pulse and the pullback.
+--------------------------------------------------------------------------------
+3. Defining the Valid Pullback (POI vs. BRT)
+Identifying "real" pullbacks is strategically necessary to avoid the trap of internal noise. A valid pullback must demonstrate counter-trend institutional pressure before the primary trend is cleared for continuation.
+NCI Pullback Standards
+Two Marubozu Standard: Requires two consecutive Marubozu candles (70% body rule) moving against the trend. To ensure consistent pressure, the total length of the second candle must be at least 70% of the first.
+Big Maru + One Small (50% Retracement Rule): A single large Marubozu followed by a smaller candle. To validate this as a pullback rather than a reversal, the lowest low of the second candle (in an uptrend) must remain above the 50% mid-point of the first candle’s total length.
+Liquidity Zones: BRT vs. POI
+The strength of the pulse wave dictates which zone the market retests for liquidity:
+Break and Retest (BRT): Occurs when the pulse wave is "super strong." Price only retraces to the recent high/low (the breakout line) before immediate continuation.
+Point of Interest (POI): This is the Equilibrium Zone, calculated as the 50% midpoint between the Recent High and the Key Level. Smart money enters here when pulse waves have moderate power, requiring a deeper liquidity grab.
+Validating the escape from these zones requires precise breakout standards to distinguish between institutional momentum and retail fakeouts.
+--------------------------------------------------------------------------------
+4. Valid Breakout Standards and Fakeout Detection
+Fake breakouts are the primary mechanism for retail capital extraction. NCI standards protect capital by requiring verified institutional momentum before a level is officially "broken."
+Breakout Requirements
+Two Marubozu Rule: Two consecutive Marubozu candles must both close beyond the Breakout Line. This confirms the shift in pressure is sustained and not a temporary spike.
+Big Maru + Small (30% Body Rule): If the breakout is led by a single large candle, a minimum of 30% of that candle's body must reside beyond the breakout line. This ensures the "Big Boys" have successfully pushed price out of the previous zone.
+Price Action Confirmation (PAC) Protocol
+If a breakout fails the initial standards but price remains near the boundary, we activate the PAC "Next 4 Candles" Rule.
+Validation: A breakout is validated if at least one normal candle closes above the original high (or below the original low) of the breakout pattern within a 4-candle window.
+Condition: If no such close occurs, the move is classified as a fakeout, and the level is considered weakened.
+--------------------------------------------------------------------------------
+5. Algorithmic Framework for PINE Script Development
+To translate these discretionary rules into a systematic architecture, the developer must implement the following multi-step logic flow.
+Step 1: Trend Identification and Key Level Anchoring
+Boolean Check: Define trend based on HH/HL or LL/LH sequences.
+Key Level Mapping: Set the KeyLevel_Coordinate at the specific HL/LH that preceded the current HH/LL extreme.
+Step 2: Candle Classification Engine
+Standard Marubozu: If (Body / TotalLength) >= 0.70 = TRUE.
+Special Marubozu: If (Body / TotalLength) >= 0.50 AND (Close >= 0.90 * High + 0.10 * Low) = TRUE (for bullish).
+Pinbar: If (Body / TotalLength) < 0.50 = TRUE.
+Step 3: Pullback and Breakout Validation Logic
+30% Offset Condition: If (Close - BreakoutLine) / (Close - Open) >= 0.30 = TRUE.
+Relative Length Condition: If (Candle2_TotalLength / Candle1_TotalLength) >= 0.70 = TRUE.
+Retracement Condition: If (Candle2_Low > (Candle1_High + Candle1_Low) / 2) = TRUE.
+Step 4: Zone Mapping and Coordinate Calculation
+Key Level: Set as primary stop-loss boundary.
+BRT Zone: Coordinate mapped to the previous Recent High/Low.
+POI Zone: POI_Coordinate = (RecentHigh + KeyLevel_HL) / 2 (Equilibrium).
+--------------------------------------------------------------------------------
+6. Interpretation of Trend Quality: Setup Grading
+Not all setups are created equal; trend context determines probability. The presence of ranging price action or "Normal" candles dictates the quality grade.
+High-Quality Setup (Trending): Characteristics include series of Marubozu pulse waves and pullbacks that respect the Key Level or POI without sideways consolidation.
+Medium-Quality Setup (Corrective): Includes "Normal" candles (neither Marubozu nor Pinbar). These setups require PAC before a breakout is validated.
+Low-Quality Setup (Ranging): If price is stuck within a single candle’s range for 2–5 candles, the level is "weaker." Breakouts from ranges require mandatory PAC verification.
+The Gap Rule: Critical Capital Protection
+Gaps represent liquidity voids. For monitoring purposes, gaps are treated as Marubozu candles to maintain structural counts. However, execution must be explicitly skipped during gap-heavy environments due to slippage and liquidity risk. Traders must wait for price to stabilize and escape the gap-affected zone via a valid breakout before committing capital.
+The ultimate edge in the NCI system is not the discovery of patterns, but the ruthless discipline required to remain sidelined until institutional momentum definitively escapes the noise through a verified breakout.
