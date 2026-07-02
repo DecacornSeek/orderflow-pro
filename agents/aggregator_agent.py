@@ -14,7 +14,7 @@ from core.broker import Broker, L2, TRADES, AGGREGATED, PATTERNS
 from core.validators import validate_aggregated_snapshot
 import core.metrics as metrics
 from core.cvd import CVD
-from core.pattern_engine import PatternEngine
+from core.pattern_engine import PatternEngine, detect_delta_divergence
 from core.session_profile import SessionProfile
 from core.weekly_profile import WeeklyProfile
 from core.profile_shape import classify_shape
@@ -186,6 +186,22 @@ async def _publish_loop(
             # Divergence
             div = divergence.current_divergence
 
+            # Delta Divergenz aus bestätigten Swings (Spec §5.3).
+            # cvd_spot_* bleibt None bis Sprint A die Spot-Streams liefert —
+            # spot_confirms ist dann None statt True/False.
+            try:
+                highs = divergence.get_swing_highs()
+                lows = divergence.get_swing_lows()
+                delta_div = detect_delta_divergence(
+                    price_highs=[s["price"] for s in highs],
+                    cvd_perps_highs=[s["cvd"] for s in highs],
+                    price_lows=[s["price"] for s in lows],
+                    cvd_perps_lows=[s["cvd"] for s in lows],
+                )
+            except Exception as e:
+                _throttled_warn("delta_div", "delta divergence failed: %s", e)
+                delta_div = None
+
             # Record window volume for absorption baseline
             total_vol = sum(t[2] for t in list(absorption._trades) if hasattr(absorption, "_trades"))
             absorption.record_window_volume(total_vol)
@@ -207,6 +223,7 @@ async def _publish_loop(
                 "weekly_context": weekly_ctx,
                 "composite_context": composite_ctx,
                 "divergence": div,
+                "delta_divergence": delta_div,
             }
             ok, reason = validate_aggregated_snapshot(payload)
             if not ok:

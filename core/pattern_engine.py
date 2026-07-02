@@ -23,7 +23,7 @@ Usage:
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 import pandas as pd
 
@@ -35,6 +35,91 @@ DEFAULT_MIN_WEEKS = 2  # minimum weeks of baseline data needed to compute a z-sc
 logger = logging.getLogger(__name__)
 
 BASELINE_PATH = Path(__file__).parent.parent / "data" / "volume_baseline.parquet"
+
+
+# ---------------------------------------------------------------------------
+# Delta Divergenz (SYSTEM_ARCHITECTURE_V2.md §5.3)
+# ---------------------------------------------------------------------------
+
+def _divergence_strength(cvd_prev: float, cvd_last: float) -> float:
+    """Normierte Staerke 0..1: wie weit die CVD hinter dem alten Extrem zurueckbleibt."""
+    gap = abs(cvd_prev - cvd_last)
+    denom = max(abs(cvd_prev), abs(cvd_last), 1e-9)
+    return round(min(gap / denom, 1.0), 4)
+
+
+def _spot_confirms(spot: Optional[Sequence[float]], bearish: bool) -> Optional[bool]:
+    """Spot-CVD Bestaetigung: dreht Spot in dieselbe Richtung wie Perps?
+
+    None = kein Spot-Stream verfuegbar (Sprint A pending) — Signal bleibt
+    gueltig, nur ohne Bestaetigungs-Dimension.
+    """
+    if spot is None or len(spot) < 2:
+        return None
+    return spot[-1] <= spot[-2] if bearish else spot[-1] >= spot[-2]
+
+
+def detect_delta_divergence(
+    price_highs: Optional[Sequence[float]] = None,
+    cvd_perps_highs: Optional[Sequence[float]] = None,
+    cvd_spot_highs: Optional[Sequence[float]] = None,
+    price_lows: Optional[Sequence[float]] = None,
+    cvd_perps_lows: Optional[Sequence[float]] = None,
+    cvd_spot_lows: Optional[Sequence[float]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Delta Divergenz — Preis-Extrem ohne bestaetigendes CVD-Extrem.
+
+    Reine Funktion, kein State (Architektur-Prinzip P3). Die Sequenzen sind
+    parallele Serien bestaetigter Swing-Punkte (gleicher Swing = gleicher Index);
+    verglichen werden jeweils die letzten beiden.
+
+    Bearish: Preis macht Higher High, CVD Perps macht KEIN neues High
+             -> Kaufdruck nimmt ab trotz steigendem Preis.
+    Bullish: Preis macht Lower Low, CVD Perps macht KEIN neues Low
+             -> Verkaufsdruck trocknet aus, moegliches Reversal.
+
+    Spot-CVD (optional) liefert das Bestaetigungs-Flag "spot_confirms":
+    True/False wenn Spot-Daten vorhanden, sonst None.
+
+    Returns:
+        dict mit {divergence_type, price, prev_price, cvd_perps,
+        prev_cvd_perps, strength, spot_confirms} — oder None wenn
+        keine Divergenz vorliegt. Feuern beide Seiten, gewinnt die staerkere.
+    """
+    bearish: Optional[Dict[str, Any]] = None
+    bullish: Optional[Dict[str, Any]] = None
+
+    if (price_highs is not None and cvd_perps_highs is not None
+            and len(price_highs) >= 2 and len(cvd_perps_highs) >= 2):
+        p_prev, p_last = price_highs[-2], price_highs[-1]
+        c_prev, c_last = cvd_perps_highs[-2], cvd_perps_highs[-1]
+        # Higher High im Preis, aber CVD bleibt unter/auf dem alten High
+        if p_last > p_prev and c_last <= c_prev:
+            bearish = {
+                "divergence_type": "bearish_divergence",
+                "price": p_last, "prev_price": p_prev,
+                "cvd_perps": c_last, "prev_cvd_perps": c_prev,
+                "strength": _divergence_strength(c_prev, c_last),
+                "spot_confirms": _spot_confirms(cvd_spot_highs, bearish=True),
+            }
+
+    if (price_lows is not None and cvd_perps_lows is not None
+            and len(price_lows) >= 2 and len(cvd_perps_lows) >= 2):
+        p_prev, p_last = price_lows[-2], price_lows[-1]
+        c_prev, c_last = cvd_perps_lows[-2], cvd_perps_lows[-1]
+        # Lower Low im Preis, aber CVD bleibt ueber/auf dem alten Low
+        if p_last < p_prev and c_last >= c_prev:
+            bullish = {
+                "divergence_type": "bullish_divergence",
+                "price": p_last, "prev_price": p_prev,
+                "cvd_perps": c_last, "prev_cvd_perps": c_prev,
+                "strength": _divergence_strength(c_prev, c_last),
+                "spot_confirms": _spot_confirms(cvd_spot_lows, bearish=False),
+            }
+
+    if bearish and bullish:
+        return bearish if bearish["strength"] >= bullish["strength"] else bullish
+    return bearish or bullish
 
 
 class PatternEngine:

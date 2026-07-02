@@ -35,6 +35,10 @@ class DivergenceDetector:
         self._divergence: Optional[Dict] = None
         self._history: deque = deque(maxlen=20)
 
+        # Bestätigte Swing-Serien — Input für detect_delta_divergence()
+        self._swing_highs: deque = deque(maxlen=20)
+        self._swing_lows: deque = deque(maxlen=20)
+
     def ingest(self, ts: int, price: float, cvd_delta: float) -> None:
         self._prices.append(price)
         self._cvd.append(cvd_delta)
@@ -81,6 +85,7 @@ class DivergenceDetector:
                 div = "bearish_divergence" if cvd < self._last_high["cvd"] else "regular_bullish"
                 self._emit(div, ts, price, cvd, self._last_high)
         self._last_high = {"ts": ts, "price": price, "cvd": cvd}
+        self._swing_highs.append({"ts": ts, "price": price, "cvd": cvd})
 
     def _register_low(self, ts: int, price: float, cvd: float) -> None:
         if self._last_low is not None:
@@ -88,6 +93,15 @@ class DivergenceDetector:
                 div = "bullish_divergence" if cvd > self._last_low["cvd"] else "regular_bearish"
                 self._emit(div, ts, price, cvd, self._last_low)
         self._last_low = {"ts": ts, "price": price, "cvd": cvd}
+        self._swing_lows.append({"ts": ts, "price": price, "cvd": cvd})
+
+    def get_swing_highs(self) -> List[Dict]:
+        """Bestätigte Swing Highs (ts, price, cvd) — ältestes zuerst."""
+        return list(self._swing_highs)
+
+    def get_swing_lows(self) -> List[Dict]:
+        """Bestätigte Swing Lows (ts, price, cvd) — ältestes zuerst."""
+        return list(self._swing_lows)
 
     def _emit(self, div_type: str, ts: int, price: float, cvd: float, prev: Dict) -> None:
         event = {
