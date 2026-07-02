@@ -1,0 +1,129 @@
+
+Functional Specification: The NCI Trading Strategy for Algorithmic Implementation
+
+1. Executive Logic: The "Real Story" of Market Liquidity
+
+The NCI (Nature, Context, Impact) strategy is a liquidity-tracking framework designed to model institutional order flow. For an algorithmic implementation in Python, the system must move beyond geometric pattern recognition to model "Turning Points"—specific coordinates where liquidity shifts from selling pressure to buying pressure (or vice versa). The algorithm tracks the "Liquidity Line" length; institutional buying pressure is mathematically represented as long liquidity expansion at discounted price levels.
+
+The core conceptual framework distinguishes between "Pulse Waves" (high-volume institutional expansion in the direction of the Main Stream) and "Pullback Waves" (temporary corrective volatility). By following the "Main Stream" established by Market Makers and Central Banks, the AI filters out retail noise. This liquidity logic provides the underlying "why" for the structural rules, framing the market as a series of institutional expansion and re-accumulation phases.
+
+2. Market Structure Architecture: Defining Trends and Key Levels
+
+In NCI logic, trends are treated as strict hierarchical sequences. The algorithm’s primary objective is the identification of the "Key Level," which serves as the definitive turning point of institutional interest. A trend is only considered invalidated when price produces a Validated Breakout (see Section 4) that closes beyond the Key Level. Retail "touches" or "wicks" that do not meet validation standards are discarded as noise.
+
+Entity	Definition	Technical Logic for Python Modeling
+Uptrend	Sequence of Higher-Highs (HH) and Higher-Lows (HL).	HH[n] > HH[n-1] AND HL[n] > HL[n-1]
+Downtrend	Sequence of Lower-Lows (LL) and Lower-Highs (LH).	LL[n] < LL[n-1] AND LH[n] < LH[n-1]
+Key Level (Uptrend)	The HL that created the current highest HH.	HL_Recent where HL_Recent preceded max(HH_Current_Wave)
+Key Level (Downtrend)	The LH that created the current lowest LL.	LH_Recent where LH_Recent preceded min(LL_Current_Wave)
+
+A trend change occurs ONLY when a VALIDATED_CLOSE is detected beyond the Key Level. The engineering pipeline must distinguish between a price "touch" and a validated structural shift.
+
+3. Candlestick Classification and Signal Pressure
+
+The NCI system treats candlesticks as "pressure gauges." The algorithm must evaluate the ratio between the body and total length to determine momentum consistency.
+
+* Marubozu (High Pressure): BodyHeight / TotalLength > 0.7. This represents consistent momentum and institutional control.
+* Pinbar (High Fluctuation): BodyHeight / TotalLength < 0.5. This represents high-volatility struggle and indecision where buying and selling pressures neutralized each other.
+* Doji (No Power): Very small candles where both volume and range are negligible. These should be filtered as NO_SIGNAL or used only as minor confirmations.
+
+The Special Marubozu (The "Shock Move") This represents a rapid "Shock Move" where price absorbs all opposing pressure within a single session. For Python implementation, use the following Fibonacci calculation:
+
+1. Body Ratio: BodyHeight / TotalLength >= 0.5.
+2. Tail: Must possess a long tail opposite the close.
+3. Fibonacci Close: (Close - Low) / (High - Low) for bullish moves or (High - Close) / (High - Low) for bearish moves. If the value is \ge 0.9, the candle is classified as a Special Marubozu.
+
+4. Validation Algorithms: Pullbacks and Breakouts
+
+Price movement is only "valid" if it satisfies strict momentum standards. These filters prevent the algorithm from engaging during "Fake Breakouts" or weak corrective moves.
+
+Functional Logic for Valid Pullbacks A corrective move must meet one of two standards to be considered a valid pullback:
+
+1. 2-Marubozu Standard: Two consecutive Marubozu candles in the opposite direction of the trend. Constraint: Total length of the second candle must be \ge 70\% of the first to ensure pressure consistency.
+2. Big Maru + 1 Small: One "Big Maru" followed by a small candle. Constraint: "Big" is defined as a Marubozu with a total length greater than the max() of the last 5 Marubozus. The subsequent small candle must maintain a close above the 50% retracement level of the Big Maru.
+
+Functional Logic for Valid Breakouts (The 30% Body Rule) For a breakout beyond a Key Level or Range Boundary to be valid, the breaking candle must satisfy: abs(Close - BreakoutLine) / abs(Open - Close) >= 0.3 (At least 30% of the candle's body must close beyond the level).
+
+Price Action Confirmation (The 4-Candle Rule) If a breakout fails the 30% Body Rule, the system enters a PENDING_VALIDATION state for the next 4 bars. If any subsequent candle produces a close beyond the original breakout candle’s high (for uptrends) or low (for downtrends), the state transitions to VALID.
+
+5. Range Detection: Filtering Market Noise
+
+Range logic serves as a "Skip Trading" filter. A range is initiated by a "Mother Candle" when subsequent close prices remain within its High-Low boundaries for 2 to 5 consecutive periods.
+
+* Range Initiation: Triggered by Marubozus, Pinbars, or Invalid Pullbacks.
+* Boundary Management: The RangeHigh and RangeLow are initially the High and Low of the Mother Candle.
+* Dynamic Range Expansion: If a "Fake Breakout" (a move that crosses the boundary but fails Section 4 validation) occurs, the algorithm must update the RangeBoundary to the extreme of that failed attempt. The system remains in SKIP mode until a Valid Breakout occurs beyond these dynamically expanded boundaries.
+
+6. Multi-Timeframe Confluence and Execution
+
+Trading a single timeframe is high-risk. The "Confluence Logic Gate" ensures execution only when the High Timeframe (HTF) bias and Local Timeframe (LTF) structure are synchronized.
+
+Profile	High Timeframe (HTF)	Middle Timeframe	Entry Timeframe (LTF)
+Daily Trader	H1	M15	M5
+
+The Same Direction Rule: The execution engine returns True only when:
+
+1. HTF Trend: Price > HTF_KeyLevel (for Buy).
+2. Mid-TF Trend: Price > Mid-TF_KeyLevel (for Buy).
+3. LTF Alignment: If the LTF is in a pullback (Downtrend), the system waits for a Change of Character (CHoCH)—defined as a Valid Breakout of the LTF's Lower-High (LH)—to realign with the HTF bias.
+
+7. Translation to Python: Logic Summary for AI Coding
+
+The NCI strategy is a binary, conditional system ideal for class-based architecture and Boolean logic gates.
+
+Technical Implementation Checklist:
+
+* Data Structures:
+  * TrendState Enum: UPTREND, DOWNTREND, RANGE.
+  * Candle Class: Store OCHL, TotalLength, BodyHeight, and Fibonacci ratios.
+  * MarketStructure Class: Track HH, HL, LL, LH using Pandas DataFrames.
+* Core Functions:
+  * is_marubozu(candle): Returns True if BodyHeight / TotalLength > 0.7.
+  * validate_momentum(): Implements the 4-candle retrospective logic for PENDING states.
+  * update_range_bounds(): Dynamic update function for boundary expansion on failed breakouts.
+  * calculate_special_maru(candle): Fibonacci-based pressure check (Close - Low) / (High - Low) >= 0.9.
+* Logic Gates:
+  * A confluence_gate() function that aggregates states across three MarketStructure instances (H1, M15, M5), returning execution permission only upon directional alignment or LTF CHoCH.
+
+This codification transforms subjective price action into objective quantitative logic, providing the precision required for institutional-grade algorithmic execution.
+
+
+___
+In the NCI system, the M1 timeframe is utilized as the Satellite Lower Timeframe (LTF) for aggressive daily trading setups. It functions within the following specific hierarchy:
+Hierarchy: M15 (Higher Timeframe) – M5 (Base Timeframe) – M1 (Lower Timeframe)
+.
+Functional Role: The M1 chart is used exclusively to analyze the internal pullback structure of the M5 wave to find ultra-precise entries and to trail profits with high sensitivity
+.
+Data Consistency: The algorithm must apply the same Key Level logic on M1 as it does on H4; however, the M1 structure must be analyzed strictly from the M5 Key Level to the current price to maintain directional confluence
+.
+2. The TF/2 Concept (Advanced Precision)
+The M1 timeframe is a critical component of the TF/2 (Timeframe divided by 2) standard, an advanced module for experienced traders.
+Logic: If a pullback or breakout is mathematically invalid on the M5 (e.g., failing the 70% length or 30% body rules), the system "zooms in" to the M2.5 or M1 to check for validity
+.
+Algorithmic Requirement: If the M1 chart shows a Valid Breakout pattern (e.g., Two Marubozus), the higher-level M5 structure is functionally upgraded to "Valid" even if it appears flawed on the M5 chart itself
+.
+3. Functional Hazards and Algorithmic Constraints
+When implementing M1 logic, the functional engineer must account for significant "Noise Case" variables:
+Volume/Liquidity Gaps: The M1 timeframe is highly susceptible to gaps, especially during session transitions (New York to Asia)
+. The algorithm must treat these gaps as Marubozu candles to maintain structural continuity, but should flag the zone as "High Risk/Monitor Only" rather than "Trade"
+.
+High-Pressure Frequency: Functions executed on the M1 timeframe can yield ~10 trading opportunities per day
+. This requires the script to have strict risk-control filters (like the "Touch Count" rule) to prevent over-trading in noise-heavy environments
+.
+Noise vs. Pulse: Because "noise was born to take your money," the system warns that even if market structure analysis on M1 is 100% correct, low liquidity can trigger fake breakouts that hunt stop losses
+.
+4. Logic Summary for Pine Script/Python Implementation
+Component
+Implementation Rule on M1
+Candle Math
+Identical: Marubozu (Body ≥ 70%), Special Marubozu (Body ≥ 50% + 0.9 Fib Close)
+.
+Structural Sync
+M1 Key Levels are valid only if they align with the M15 Higher Timeframe trend
+.
+Range Detection
+Crucial: A range is confirmed if price is trapped for 2–5 candles. M1 ranges expand frequently via fake breakout spikes
+.
+Entry Timing
+Use M1 to "catch the wick" at the open of a continuation candle after M5 structural confirmation [conversation].
+Functional Recommendation: The specification should explicitly state that M1 usage is not recommended for users with less than two years of experience due to the extreme psychological pressure and the high frequency of fake signals generated by low-liquidity spikes

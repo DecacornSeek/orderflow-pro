@@ -14,7 +14,8 @@ CLASSIFICATION PRIORITY ORDER (first match wins)
                (extreme speed — "absorption zone")
 3. DOJI        total range < 30% of avgMaru5 (tiny relative to recent strong bars)
 4. PINBAR      body < 50% AND total range >= 30% avgMaru5 (wicky, not small)
-5. NORMAL      anything else (including when benchmark not yet initialised)
+5. INSIDE_BAR  high < prev_high AND low > prev_low (contained by prior bar)
+6. NORMAL      anything else (including when benchmark not yet initialised)
 
 BENCHMARK: avgMaru5
 -------------------
@@ -44,9 +45,10 @@ MARUBOZU   = "marubozu"
 SHOCK_MOVE = "shock_move"
 DOJI       = "doji"
 PINBAR     = "pinbar"
+INSIDE_BAR = "inside_bar"
 NORMAL     = "normal"
 
-CANDLE_TYPES = (MARUBOZU, SHOCK_MOVE, DOJI, PINBAR, NORMAL)
+CANDLE_TYPES = (MARUBOZU, SHOCK_MOVE, DOJI, PINBAR, INSIDE_BAR, NORMAL)
 
 # ── Thresholds — directly from the Pine Script ────────────────────────────────
 _MARU_BODY_RATIO   = 0.70   # body / totalLen >= 0.70  → Marubozu
@@ -75,7 +77,7 @@ class CandleResult:
 
     @property
     def is_indecision(self) -> bool:
-        return self.candle_type in (DOJI, PINBAR)
+        return self.candle_type in (DOJI, PINBAR, INSIDE_BAR)
 
 
 class CandleClassifier:
@@ -91,6 +93,8 @@ class CandleClassifier:
 
     def __init__(self) -> None:
         self._buf: deque[float] = deque(maxlen=_BENCHMARK_WINDOW)
+        self._prev_high: Optional[float] = None
+        self._prev_low: Optional[float] = None
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -118,11 +122,17 @@ class CandleClassifier:
             open_=open_, high=high, low=low, close=close,
             total_len=total_len, body_ratio=body_ratio,
             avg_maru5=avg_maru5,
+            prev_high=self._prev_high,
+            prev_low=self._prev_low,
         )
 
         # Update benchmark: MARUBOZU and SHOCK_MOVE feed the buffer.
         if candle_type in (MARUBOZU, SHOCK_MOVE):
             self._buf.append(total_len)
+
+        # Store for inside-bar detection on next bar
+        self._prev_high = high
+        self._prev_low = low
 
         direction = _direction(open_, close)
 
@@ -137,6 +147,8 @@ class CandleClassifier:
     def reset(self) -> None:
         """Clear the benchmark buffer (use between sessions / test cases)."""
         self._buf.clear()
+        self._prev_high = None
+        self._prev_low = None
 
     @property
     def avg_maru5(self) -> Optional[float]:
@@ -160,6 +172,8 @@ class CandleClassifier:
         open_: float, high: float, low: float, close: float,
         total_len: float, body_ratio: float,
         avg_maru5: Optional[float],
+        prev_high: Optional[float] = None,
+        prev_low: Optional[float] = None,
     ) -> str:
         # ── Priority 1: Marubozu ──────────────────────────────────────────────
         if total_len > 0 and body_ratio >= _MARU_BODY_RATIO:
@@ -188,7 +202,18 @@ class CandleClassifier:
         ):
             return PINBAR
 
-        # ── Priority 5: Normal (catch-all) ───────────────────────────────────
+        # ── Priority 5: Inside Bar ────────────────────────────────────────────
+        # high < prev_high AND low > prev_low → fully contained by prior bar.
+        # Requires a previous bar (prev_high/prev_low not None).
+        if (
+            prev_high is not None
+            and prev_low is not None
+            and high < prev_high
+            and low > prev_low
+        ):
+            return INSIDE_BAR
+
+        # ── Priority 6: Normal (catch-all) ───────────────────────────────────
         return NORMAL
 
 

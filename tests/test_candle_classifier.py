@@ -24,7 +24,12 @@ Pine Script reference (v5) — condensed logic:
   Buffer update (AFTER classify): push totalLen if isMarubozu or isShockMove; keep last 5.
 """
 
+import sys
+
 import pytest
+
+sys.path.insert(0, ".")
+
 from core.candle_classifier import (
     CandleClassifier,
     CandleResult,
@@ -33,6 +38,7 @@ from core.candle_classifier import (
     SHOCK_MOVE,
     DOJI,
     PINBAR,
+    INSIDE_BAR,
     NORMAL,
 )
 
@@ -556,3 +562,110 @@ class TestAbsorptionZone:
         # → inAbsZone False → NOT SM
         r = _clf().classify(open_=107, high=110, low=100, close=101.1)
         assert r.candle_type == NORMAL
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 12. Inside Bar — Priority 5: high < prev_high AND low > prev_low
+#    Added Sprint C: NCI candle proof at location (Methodology Step 8).
+#    Inside bar alone is indecision — it only becomes a trade proof when
+#    backed by volume / at a planned zone (road_map + business_zones).
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestInsideBar:
+
+    def test_inside_bar_detected(self):
+        """Current bar fully inside previous bar → INSIDE_BAR."""
+        clf = _clf()
+        # Feed a normal bar first (to set prev_high/prev_low)
+        clf.classify(open_=100, high=110, low=90, close=105)
+        # Current bar inside: high=108 (<110), low=92 (>90)
+        r = clf.classify(open_=104, high=108, low=92, close=103)
+        assert r.candle_type == INSIDE_BAR
+
+    def test_inside_bar_not_triggered_on_first_bar(self):
+        """No previous bar → cannot be inside bar."""
+        clf = _clf()
+        r = clf.classify(open_=100, high=110, low=90, close=105)
+        assert r.candle_type != INSIDE_BAR
+
+    def test_inside_bar_exact_boundary_not_inside(self):
+        """high == prev_high or low == prev_low → NOT inside bar (strict)."""
+        clf = _clf()
+        clf.classify(open_=100, high=110, low=90, close=105)
+        # high=110 (==prev_high) → not inside
+        r = clf.classify(open_=104, high=110, low=95, close=106)
+        assert r.candle_type != INSIDE_BAR
+
+    def test_inside_bar_low_equals_prev_low_not_inside(self):
+        """low == prev_low → NOT inside bar (strict)."""
+        clf = _clf()
+        clf.classify(open_=100, high=110, low=90, close=105)
+        r = clf.classify(open_=104, high=108, low=90, close=103)
+        assert r.candle_type != INSIDE_BAR
+
+    def test_inside_bar_is_indecision(self):
+        """Inside bar is an indecision candle."""
+        clf = _clf()
+        clf.classify(open_=100, high=110, low=90, close=105)
+        r = clf.classify(open_=104, high=108, low=92, close=103)
+        assert r.is_indecision is True
+
+    def test_inside_bar_not_strong(self):
+        """Inside bar does NOT feed the benchmark."""
+        clf = _clf()
+        _feed_strong(clf, total_len=10.0)
+        clf.classify(open_=100, high=110, low=90, close=105)  # prev bar
+        before = clf.avg_maru5
+        r = clf.classify(open_=104, high=108, low=92, close=103)
+        assert r.is_strong is False
+        assert clf.avg_maru5 == before  # benchmark unchanged
+
+    def test_inside_bar_after_reset_not_detected(self):
+        """After reset, prev_high/prev_low are None → no inside bar."""
+        clf = _clf()
+        clf.classify(open_=100, high=110, low=90, close=105)
+        clf.reset()
+        r = clf.classify(open_=104, high=108, low=92, close=103)
+        assert r.candle_type != INSIDE_BAR
+
+    def test_marubozu_inside_bar_is_marubozu(self):
+        """Strong candle that happens to be inside prev bar → Marubozu wins (priority)."""
+        clf = _clf()
+        _feed_strong(clf, total_len=100.0)  # set benchmark
+        clf.classify(open_=100, high=110, low=90, close=105)  # prev bar
+        # body >= 70% of total, inside prev bar → Marubozu at priority 1, not inside_bar
+        # total=8 (high=108, low=100), body=7, ratio=7/8=0.875 >= 0.70
+        r = clf.classify(open_=100, high=108, low=100, close=107)
+        assert r.candle_type == MARUBOZU  # Priority 1 beats Priority 5
+
+    def test_inside_bar_not_confused_with_doji(self):
+        """A doji-sized bar that is also inside → Doji at priority 3 beats inside_bar."""
+        clf = _clf()
+        _feed_strong(clf, total_len=100.0)  # avgMaru5=100, doji threshold=30
+        clf.classify(open_=100, high=110, low=90, close=105)  # prev bar
+        # total=2 (< 30 = doji), inside prev bar → Doji at priority 3
+        r = clf.classify(open_=100, high=102, low=100, close=100.5)
+        assert r.candle_type == DOJI  # Doji beats inside_bar
+
+    def test_series_with_mixed_inside_bars(self):
+        """Verify classify_series correctly handles inside bars."""
+        from core.candle_classifier import classify_series
+        rows = [
+            (100, 110, 90, 105),   # Normal (first bar, no prev)
+            (104, 108, 92, 103),   # Inside Bar (contained by bar 1)
+            (103, 107, 93, 105),   # Inside Bar (contained by bar 2)
+            (103, 112, 91, 107),   # Normal (breaks above bar 3's high=107)
+            (106, 111, 92, 109),   # Inside Bar (back inside bar 4)
+        ]
+        results = classify_series(rows)
+        assert results[0].candle_type == NORMAL
+        assert results[1].candle_type == INSIDE_BAR
+        assert results[2].candle_type == INSIDE_BAR
+        assert results[3].candle_type == NORMAL
+        assert results[4].candle_type == INSIDE_BAR
+
+
+if __name__ == "__main__":
+    # Repo convention is `python tests/test_X.py` — without this guard,
+    # running this pytest-class file that way silently executes zero tests.
+    sys.exit(pytest.main([__file__, "-q"]))

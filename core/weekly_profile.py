@@ -7,19 +7,20 @@ with a label prefix "Week-YYYY-Www" for weekly aggregation in composite_profile.
 
 Die gemeinsame Profil-Maschinerie (VAP/POC/VA/Regime/Archiv) lebt seit
 Sprint B in core/volume_profile.py — hier nur der Wochen-Anker.
+
+Alle Schwellwerte kommen aus ProfileConfig.
 """
 
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional, Tuple
 
+from core.profile_config import ProfileConfig, PROFILE_CONFIG, resolve_config
 from core.volume_profile import (
     BaseVolumeProfile, _compute_ohlc, _compute_poc, _compute_value_area,
 )
 
 WEEKLY_RESET_HOUR = 22  # Sunday 22:00 UTC
 WEEKLY_RESET_DAY = 6     # Sunday = 6 in Python weekday() (Mon=0 ... Sun=6)
-
-DEFAULT_VALUE_AREA_PCT = 0.7
 
 
 def _week_start_ms(timestamp: int) -> Tuple[int, str]:
@@ -53,11 +54,12 @@ class WeeklyProfile(BaseVolumeProfile):
         ctx = wp.current_context()
     """
 
-    def __init__(self, value_area_pct: float = DEFAULT_VALUE_AREA_PCT,
-                 poc_drift_interval_s: float = 300.0) -> None:
-        super().__init__(value_area_pct=value_area_pct,
-                         poc_drift_interval_s=poc_drift_interval_s,
-                         archive_maxlen=52)
+    def __init__(self, config: Optional[ProfileConfig] = None,
+                 value_area_pct: Optional[float] = None,
+                 poc_drift_interval_s: Optional[float] = None) -> None:
+        cfg = resolve_config(config, value_area_pct=value_area_pct,
+                             poc_drift_interval_s=poc_drift_interval_s)
+        super().__init__(config=cfg)
         self._label: Optional[str] = None
 
     def _profile_label(self) -> Optional[str]:
@@ -87,7 +89,7 @@ class WeeklyProfile(BaseVolumeProfile):
 
         ohlc = _compute_ohlc(self._prices)
         poc = _compute_poc(self._vap)
-        va_h, va_l = _compute_value_area(self._vap, self.value_area_pct)
+        va_h, va_l = _compute_value_area(self._vap, self.config.value_area_pct)
         current_price = self._prices[-1] if self._prices else None
 
         ctx: Dict[str, Any] = {

@@ -21,6 +21,11 @@ from core.profile_shape import classify_shape
 from core.absorption import AbsorptionDetector
 from core.divergence import DivergenceDetector
 from core.composite_profile import CompositeProfile
+from core.profile_structure import structure_context
+from core.business_zones import ZoneRegistry
+from core.road_map import build_road_map
+from core.lethargy import LethargyDetector
+from core.vpoc_trend import classify_vpoc_trend
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,8 @@ async def run(broker: Broker, shutdown: asyncio.Event) -> None:
     absorption = AbsorptionDetector()
     divergence = DivergenceDetector(lookback=3)
     composite = CompositeProfile()
+    zones = ZoneRegistry()
+    lethargy = LethargyDetector()
     last_l2: dict = {}
 
     l2_q = broker.subscribe(L2)
@@ -55,11 +62,11 @@ async def run(broker: Broker, shutdown: asyncio.Event) -> None:
     consume_l2 = asyncio.create_task(_consume_l2(l2_q, last_l2, shutdown))
     consume_trades = asyncio.create_task(
         _consume_trades(trade_q, last_l2, cvd, engine, session, weekly,
-                        absorption, broker, shutdown)
+                        absorption, lethargy, broker, shutdown)
     )
     publish = asyncio.create_task(
         _publish_loop(broker, cvd, last_l2, session, weekly, absorption,
-                      divergence, composite, shutdown)
+                      divergence, composite, zones, lethargy, shutdown)
     )
 
     await asyncio.gather(consume_l2, consume_trades, publish, return_exceptions=True)
@@ -89,6 +96,7 @@ async def _consume_trades(
     session: SessionProfile,
     weekly: WeeklyProfile,
     absorption: AbsorptionDetector,
+    lethargy: LethargyDetector,
     broker: Broker,
     shutdown: asyncio.Event,
 ) -> None:
@@ -121,6 +129,8 @@ async def _consume_trades(
                     # Absorption events are included in the next aggregated snapshot
                     # via session context. They are not published separately.
                     pass
+                # Lethargy: track price+volume to detect slowing at zones
+                lethargy.ingest(price_f, size_f, ts)
         except asyncio.TimeoutError:
             continue
         except Exception as e:
@@ -136,9 +146,12 @@ async def _publish_loop(
     absorption: AbsorptionDetector,
     divergence: DivergenceDetector,
     composite: CompositeProfile,
+    zones: ZoneRegistry,
+    lethargy: LethargyDetector,
     shutdown: asyncio.Event,
 ) -> None:
     """Periodically publish aggregated snapshot on AGGREGATED with market structure context."""
+    known_profiles = -1  # Zonen nur neu bauen, wenn neue Profile archiviert wurden
     while not shutdown.is_set():
         await asyncio.sleep(PUBLISH_INTERVAL)
         try:
@@ -179,9 +192,70 @@ async def _publish_loop(
 
             # Composite context from archived profiles
             archived = session.get_archived_profiles()
+            weekly_archived = weekly.get_archived_profiles()
             if archived:
                 composite.add_profiles(archived[-5:])  # last 5 sessions
             composite_ctx = composite.current_context()
+
+            # Profil-Struktur der LAUFENDEN Session (Step 5: Single Prints,
+            # schwache/starke Extreme, Double Distribution)
+            try:
+                structure_ctx = structure_context(
+                    session._vap if session.current_session and session._vap else None
+                )
+            except Exception as e:
+                _throttled_warn("structure_ctx", "profile structure failed: %s", e)
+                structure_ctx = structure_context(None)
+
+            # Business Zones (Step 6) + Road Map (Step 7)
+            try:
+                # Monotonic lifetime counts, not len(archived) — the archive
+                # deques are ring buffers (session maxlen=60, weekly=52), so
+                # once they saturate len() stops changing even though new
+                # profiles keep being archived, which would freeze zone
+                # rebuilds for days/weeks at a time in steady-state operation.
+                total_profiles = session.archived_total_count + weekly.archived_total_count
+                if total_profiles != known_profiles:
+                    zones.rebuild(archived + weekly_archived)
+                    known_profiles = total_profiles
+                if mid_price is not None:
+                    zones.update_price(float(mid_price))
+                zones_ctx = zones.snapshot(float(mid_price) if mid_price is not None else None)
+                road_map_ctx = build_road_map(session_ctx, weekly_ctx, zones_ctx,
+                                              float(mid_price) if mid_price is not None else None)
+            except Exception as e:
+                _throttled_warn("zones_ctx", "business zones/road map failed: %s", e)
+                metrics.increment(metrics.CONTEXT_FALLBACK)
+                zones_ctx = {"zones": [], "zone_count": 0,
+                             "n_unrepaired_single_prints": 0,
+                             "zone_at": None, "zone_below": None, "zone_above": None}
+                road_map_ctx = build_road_map(None, None, None, None)
+
+            # Lethargy (Step 8): market slowing at nearest zone
+            try:
+                zone_below = zones_ctx.get("zone_below")
+                zone_above = zones_ctx.get("zone_above")
+                zone_at = zones_ctx.get("zone_at")
+                # Use the nearest zone (at > below/above) for proximity check
+                target_zone = zone_at or zone_below or zone_above
+                if target_zone and mid_price is not None:
+                    lethargy.set_zone(float(target_zone["price_low"]),
+                                      float(target_zone["price_high"]))
+                else:
+                    lethargy.set_zone(None, None)
+                lethargy_ctx = lethargy.assess()
+            except Exception as e:
+                _throttled_warn("lethargy_ctx", "lethargy detection failed: %s", e)
+                lethargy_ctx = {"lethargy_detected": False, "lethargy_score": 0.0,
+                                "message": f"error: {e}"}
+
+            # Multi-Week VPOC Trend (Step 5): global money flow direction
+            try:
+                vpoc_trend_ctx = classify_vpoc_trend(weekly_archived)
+            except Exception as e:
+                _throttled_warn("vpoc_trend", "VPOC trend failed: %s", e)
+                vpoc_trend_ctx = {"direction": "insufficient_data", "strength": 0.0,
+                                  "message": f"error: {e}"}
 
             # Divergence
             div = divergence.current_divergence
@@ -224,6 +298,11 @@ async def _publish_loop(
                 "composite_context": composite_ctx,
                 "divergence": div,
                 "delta_divergence": delta_div,
+                "profile_structure": structure_ctx,
+                "business_zones": zones_ctx,
+                "road_map": road_map_ctx,
+                "lethargy": lethargy_ctx,
+                "vpoc_trend": vpoc_trend_ctx,
             }
             ok, reason = validate_aggregated_snapshot(payload)
             if not ok:

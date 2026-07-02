@@ -48,6 +48,10 @@ def replay_day(df: pd.DataFrame) -> pd.DataFrame:
             cvd.update(float(row["price"]), float(row["size"]), row["side"])
 
         snap   = cvd.snapshot()
+        rb = snap.get("rolling_buy_volume", 0) or 0
+        rs = snap.get("rolling_sell_volume", 0) or 0
+        tr = rb + rs
+        cvd_ratio = (rb - rs) / tr if tr > 0 else 0.0
         volume = group["size"].sum()
         buy_v  = group.loc[group["side"] == "buy",  "size"].sum()
         sell_v = group.loc[group["side"] == "sell", "size"].sum()
@@ -61,7 +65,7 @@ def replay_day(df: pd.DataFrame) -> pd.DataFrame:
             "buy_ratio":        round(buy_v / volume, 4) if volume > 0 else 0.5,
             "rolling_delta":    snap["rolling_delta"],
             "cumulative_delta": snap["cumulative_delta"],
-            "cvd_ratio":        snap["cvd_ratio"] or 0.0,
+            "cvd_ratio":        round(cvd_ratio, 4),
             "trade_count":      snap["trade_count"],
         })
 

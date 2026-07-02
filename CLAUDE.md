@@ -192,7 +192,160 @@ Daten-Pipeline abgeschlossen:
   - innerhalb VA und Breite >= 50% price_range -> balanced
   - sonst -> imbalanced; keine Daten -> neutral
 
-### Naechster Schritt: PR4b (Bybit + OKX Agents)
+## Sprint B (Architektur V2) — COMPLETE 2026-07-02
+
+### 1. Delta Divergenz (staerkstes deterministisches Signal, Spec §5.3)
+  - core/pattern_engine.py: detect_delta_divergence() — reine Funktion (P3),
+    vergleicht letzte zwei bestaetigte Swings; bearish = Preis HH + CVD Perps
+    kein neues High, bullish = Preis LL + CVD kein neues Low; strength 0..1
+    normiert; spot_confirms True/False/None (None bis Sprint A Spot-Streams)
+  - core/divergence.py: DivergenceDetector fuehrt jetzt Swing-Serien
+    (_swing_highs/_swing_lows, maxlen=20) + get_swing_highs()/get_swing_lows()
+  - agents/aggregator_agent.py: "delta_divergence" Feld im AGGREGATED Payload,
+    per try/except isoliert (Throttled Warn Key "delta_div")
+  - tests/test_delta_divergence.py — 30 Asserts
+
+### 2. Session-Phasen + Initial Balance (Spec §4.3)
+  - core/session_profile.py: PHASE_DEFS — 9 benannte Phasen, Minuten-
+    Aufloesung (asia, london_pre, london_open, london_session, ny_pre,
+    ny_open 13:30-15:30, overlap 15:30-16:00, ny_afternoon, asia_pre);
+    lueckenlos ueber 24h; phase_name_for_minute() / phase_for_ts()
+  - Spec-Konflikt aufgeloest: ny_open gewinnt im London/NY-Ueberlapp,
+    overlap deckt Rest 15:30-16:00
+  - "session_phase" im session_context — aus letztem Trade-ts (replay-sicher)
+  - Initial Balance jetzt auch WAEHREND der Bildung sichtbar +
+    "initial_balance_complete" Flag (vorher erst nach 60min publiziert)
+  - tests/test_session_phases.py — 35 Asserts
+
+### 3. Profil-Konsolidierung (Weekly VAP 2 Instanzen -> 1)
+  - core/volume_profile.py NEU: BaseVolumeProfile + ProfileSnapshot +
+    _bucket/_compute_ohlc/_compute_poc/_compute_value_area — die zuvor in
+    SessionProfile UND WeeklyProfile duplizierte Maschinerie (VAP-Akkumulation,
+    Regime-Heuristik, POC-Drift, Archivierung) existiert genau einmal
+  - SessionProfile + WeeklyProfile sind jetzt Subklassen; Output-Keys und
+    Verhalten identisch (Contract-Proof PASS, alle Alt-Tests gruen)
+  - core/session_profile.py re-exportiert BUCKET/ProfileSnapshot/Helpers —
+    bestehende Importe (composite_profile, tests) unveraendert
+  - Verification: verify_pr4a_contract PASS (nur additive Keys),
+    verify_pr4a_isolation PASS, verify_pr4a_perf PASS (10k Trades 464ms)
+
+## Sprint B2 (Interpretations-Layer, Methodology Steps 5-8) — COMPLETE 2026-07-02
+
+Kanonische Methodik-Referenz: docs/METHODOLOGY_STEPS_5-8.md
+(System-Layering: Pipeline -> Struktur -> Interpretation -> Strategie -> Validierung;
+alle Layer-3-Module sind reine Funktionen ueber Profildaten = backtestbar)
+
+### Step 5 — core/profile_structure.py (NEU)
+  - find_single_prints(vap): innere Buckets <= 5% POC-Volumen, Raender (Tails)
+    ausgenommen — vom Markt "geschuldete" Repair-Zonen
+  - classify_extremes(vap): duennes Extrem (Rand/Koerper <= 0.25) -> "strong"
+    (institutionelle Ablehnung), fettes Extrem (>= 0.75) -> "weak" (poor
+    high/low, Revisit wahrscheinlich)
+  - detect_double_distribution(vap): Shape "B" via profile_shape + Bruecke
+  - structure_context(vap): flacher Feature-Vektor
+  - tests/test_profile_structure.py — 29 Asserts
+
+### Step 6 — core/business_zones.py (NEU)
+  - build_zones(profiles): POC/VAH/VAL/HVN/Single-Print-Zonen aus archivierten
+    ProfileSnapshots (Session + Weekly); Merge gleicher Art; recurrence =
+    Anzahl bestaetigender Profile = Staerke
+  - ZoneRegistry: Live-Zustand untested -> tested -> repaired; Repair =
+    kumulativ durchlaufener Bereich deckt die ganze Single-Print-Zone
+    (mehrere Preis-Segmente moeglich); Zustand ueberlebt rebuild()
+  - nearest_zones(): Point A -> Point B Pfad
+  - tests/test_business_zones.py — 33 Asserts
+
+### Step 7 — core/road_map.py (NEU)
+  - build_road_map(session_ctx, weekly_ctx, zones_ctx, price) — rein (P3)
+  - day_type: balance | trend_up | trend_down | transition | conflicted |
+    neutral aus Session- + Weekly-Regime (Konflikt Session vs Weekly ->
+    conflicted -> stand_aside)
+  - SETUP_MATRIX: balance -> fade_edge_counter; trend -> continuation +
+    pullback_to_value; transition -> wait; conflicted/neutral -> stand_aside
+  - Zonen-Geschwindigkeit: single_print -> fast, hvn/poc -> rotation,
+    vah/val -> reaction
+  - tests/test_road_map.py — 35 Asserts
+
+### Aggregator-Wiring
+  - Neue additive AGGREGATED Felder: "profile_structure" (laufende Session),
+    "business_zones" (Registry-Snapshot, Top-12), "road_map"
+  - Zonen-Rebuild nur wenn neue Profile archiviert wurden (nicht pro Publish)
+  - Alle drei per try/except isoliert (throttled warn, CONTEXT_FALLBACK)
+  - Contract PASS, Isolation PASS, Perf PASS (10k Trades 215ms, p99 1.4ms)
+
+### Backlog-Nachtrag (2026-07-02): Lethargy + VPOC-Trend + Inside Bar + Prompt
+  - core/lethargy.py (NEU): detect_lethargy() — 3-dim. Signatur (Volume Decay,
+    Range Compression, Speed Decay), Lethargie nur wenn >=2 Dimensionen UND
+    Preis an Zone; LethargyDetector stateful wrapper
+  - core/vpoc_trend.py (NEU): classify_vpoc_trend() — lineare Regression ueber
+    Weekly-VPOC-Serie, rising/falling/flattening, Konsistenz-Score
+  - core/candle_classifier.py: INSIDE_BAR (Prioritaet 5, nach Pinbar)
+  - agents/signal_agent.py: Road Map + VPOC Trend + Lethargy im Prompt
+  - core/profile_config.py (NEU): ProfileConfig — zentrale Schwellwerte fuer
+    den gesamten Profil-Stack (bucket_size, value_area_pct, etc.)
+
+### Review-Fixes (2026-07-02) — nach Code Review der obigen Nachtraege
+  - **Kritisch**: ProfileConfig-Umbau hatte Konstruktor-Kwargs entfernt
+    (SessionProfile(value_area_pct=...), ZoneRegistry(max_zones=...) etc.
+    warfen TypeError) — 4 Testdateien rot. Fix: core/profile_config.py
+    resolve_config() Helper, alle betroffenen __init__ akzeptieren wieder
+    die alten Feld-Kwargs zusaetzlich zu config=
+  - **Hoch**: test_candle_classifier.py/test_lethargy.py/test_vpoc_trend.py
+    nutzen pytest-Klassen ohne __main__-Guard — `python tests/test_X.py`
+    (Repo-Konvention) fuehrte 0 Tests aus, exit 0 (falsches Gruen). Fix:
+    sys.path.insert + `pytest.main([__file__])` Guard ergaenzt
+  - **Mittel**: LethargyDetector.set_zone() war totes Feature (ingest() las
+    self._zone_low/_zone_high nie zurueck); aggregator_agent.py griff
+    stattdessen direkt auf lethargy._prices/_volumes/_timestamps zu. Fix:
+    ingest()/neue assess()-Methode nutzen set_zone() als Fallback;
+    Aggregator ruft jetzt lethargy.set_zone() + lethargy.assess() auf
+  - **Mittel**: Zonen-Rebuild-Cache verglich len(get_archived_profiles()) —
+    einmal die Archiv-Ringpuffer voll (Session maxlen=60, Weekly=52) aendert
+    sich len() nicht mehr, Zonen-Rebuild haette im Dauerbetrieb nach ~10
+    Tagen bis zu eine Woche stillstehen koennen. Fix: BaseVolumeProfile
+    bekommt monotonen archived_total_count (ueberlebt Ringpuffer-Eviction)
+  - Verifiziert: 300 passed / 3 skipped (pytest, gesamtes tests/), Contract
+    PASS, Isolation PASS, Perf PASS (10k Trades 486ms, p99 3.8ms)
+
+### Naechster Schritt: Sprint C (Strategy Engine) — Strategien konsumieren
+### jetzt zones/road_map/structure als Features; Backlog: ~~Lethargy-Detektor~~,
+### ~~Inside Bar~~, ~~Weekly-VPOC-Trendserie~~, ~~Signal Agent Prompt Erweiterung~~
+
+## Sprint B3 (Backlog-Abarbeitung) — COMPLETE 2026-07-02
+
+Vier dokumentierte Backlog-Items aus Step 8 / Methodology abgearbeitet:
+
+### 1. Lethargy Detector (core/lethargy.py)
+  - detect_lethargy() — reine Funktion (P3): 3-dimensionale Lethargie-Signatur
+    (Volume Decay + Range Compression + Speed Decay), min 2/3 Dimensionen +
+    Zone-Proximity-Gating
+  - LethargyDetector — stateful wrapper mit Rolling Buffers
+  - Wiring: aggregator_agent.py ingested jeden Trade, publish_loop rechnet
+    Lethargy gegen nearest Zone
+  - tests/test_lethargy.py — 15 Tests (pure function + stateful)
+
+### 2. Inside Bar im Candle Classifier (core/candle_classifier.py)
+  - INSIDE_BAR als neuer Candle-Typ (Priority 5: nach Pinbar, vor Normal)
+  - CandleClassifier trackt prev_high/prev_low fuer Containment-Check
+  - is_indecision=True fuer Inside Bar (zusammen mit Doji/Pinbar)
+  - Kein Benchmark-Feed (Inside Bars sind keine "strong" candles)
+  - 10 neue Tests in test_candle_classifier.py (TestInsideBar class)
+
+### 3. Multi-Week VPOC Trend Series (core/vpoc_trend.py)
+  - build_vpoc_series() — extrahiert VPOC-Zeitreihe aus ProfileSnapshots
+  - classify_vpoc_trend() — reine Funktion: Linear Regression, Richtungs-
+    Klassifikation (rising/falling/flattening), Konsistenz-Score, Slope $/Woche
+  - Wiring: aggregator_agent.py publish_loop → vpoc_trend Feld im AGGREGATED
+  - tests/test_vpoc_trend.py — 22 Tests
+
+### 4. Road Map + Zones im Signal Agent Prompt
+  - _format_zones() — Zone-At/Below/Above + Unrepaired Single Prints
+  - _format_road_map() — Day Type, Dominant Direction, Allowed Setups, Point A→B
+  - _format_lethargy() — Lethargy-Status + zerfallende Dimensionen
+  - _format_vpoc_trend() — Multi-Week VPOC Richtung + Staerke
+  - Prompt-Instruktion erweitert: Road Map + VPOC Trend + Lethargy Kontext
+
+### Bugfix: business_zones.py MERGE_GAP_BUCKETS → 1 (war undefiniert)
 
 ## Sprint Status
 Sprint 1: COMPLETE — Binance Exchange Agent
@@ -204,6 +357,9 @@ Sprint 6: PENDING — ChromaDB Pattern Memory
 Sprint 7: PENDING — Docker + VPS Deploy (Redis Migration)
 PR1.x:   COMPLETE — Contract Validation + Metrics + /metrics Endpoint
 PR4a:    COMPLETE — Session/Weekly Context Layer + Regime + 105 Tests verified
+Sprint B: COMPLETE — Delta Divergenz + Session-Phasen + IB + Profil-Konsolidierung (65 neue Asserts)
+Sprint B2: COMPLETE — Interpretations-Layer Steps 5-8 (Struktur + Zonen + Road Map, 97 neue Asserts)
+Sprint B3: COMPLETE — Backlog-Abarbeitung (Lethargy + Inside Bar + VPOC Trend + Signal Prompt, 104 neue Tests)
 
 ## Daten-Struktur
 data/

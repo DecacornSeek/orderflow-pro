@@ -10,16 +10,14 @@ Output:
   - List of HVN (High Volume Node) zones with strength
   - List of LVN (Low Volume Node) zones with strength
   - Balance/Imbalance flag based on Value Area overlap across consecutive profiles
+
+Alle Schwellwerte kommen aus ProfileConfig — keine Module-Level-Konstanten.
 """
 
-from collections import deque
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.profile_config import ProfileConfig, PROFILE_CONFIG, resolve_config
 from core.session_profile import ProfileSnapshot, _compute_poc, _compute_value_area
-
-HVN_VOLUME_PCT = 0.05   # a bucket with >= 5% of total composite volume is an HVN
-LVN_MAX_VOLUME = 0.01    # a bucket with <= 1% of total composite volume is an LVN
-PROFILE_HISTORY_LIMIT = 20  # max profiles kept in ring buffer
 
 
 def average_vap(profiles: List[ProfileSnapshot]) -> Dict[int, float]:
@@ -35,16 +33,19 @@ def average_vap(profiles: List[ProfileSnapshot]) -> Dict[int, float]:
 
 
 def find_hvn_zones(composite_vap: Dict[int, float],
-                   threshold_pct: float = HVN_VOLUME_PCT) -> List[Dict[str, Any]]:
+                   threshold_pct: Optional[float] = None) -> List[Dict[str, Any]]:
     """Find High Volume Node zones — contiguous buckets with volume above threshold.
 
     Args:
         composite_vap: price_bucket -> summed volume.
         threshold_pct: Fraction of max volume that defines "high volume".
+            Defaults to PROFILE_CONFIG.hvn_volume_pct.
 
     Returns:
         List of zones: {price_low, price_high, volume, peak_volume}.
     """
+    if threshold_pct is None:
+        threshold_pct = PROFILE_CONFIG.hvn_volume_pct
     if not composite_vap:
         return []
 
@@ -77,16 +78,19 @@ def find_hvn_zones(composite_vap: Dict[int, float],
 
 
 def find_lvn_zones(composite_vap: Dict[int, float],
-                   max_vol_pct: float = LVN_MAX_VOLUME) -> List[Dict[str, Any]]:
+                   max_vol_pct: Optional[float] = None) -> List[Dict[str, Any]]:
     """Find Low Volume Node zones — contiguous buckets with volume below threshold.
 
     Args:
         composite_vap: price_bucket -> summed volume.
         max_vol_pct: Fraction of max volume that defines "low volume".
+            Defaults to PROFILE_CONFIG.lvn_max_volume.
 
     Returns:
         List of zones: {price_low, price_high, volume, trough_volume}.
     """
+    if max_vol_pct is None:
+        max_vol_pct = PROFILE_CONFIG.lvn_max_volume
     if not composite_vap:
         return []
 
@@ -166,9 +170,12 @@ class CompositeProfile:
         ctx = comp.current_context()  # dict with HVN, LVN, balance/imbalance
     """
 
-    def __init__(self, history_limit: int = PROFILE_HISTORY_LIMIT) -> None:
+    def __init__(self, config: Optional[ProfileConfig] = None,
+                 history_limit: Optional[int] = None) -> None:
+        cfg = resolve_config(config, profile_history_limit=history_limit)
+        self.config = cfg
         self._profiles: List[ProfileSnapshot] = []
-        self._history_limit = history_limit
+        self._history_limit = cfg.profile_history_limit
 
     def add_profiles(self, profiles: List[ProfileSnapshot]) -> None:
         """Add archived profiles to the composite ring buffer."""
@@ -219,13 +226,13 @@ class CompositeProfile:
         ctx["composite_poc"] = poc
 
         # Composite Value Area
-        va_h, va_l = _compute_value_area(composite_vap, target_pct=0.7)
+        va_h, va_l = _compute_value_area(composite_vap, target_pct=self.config.value_area_pct)
         ctx["composite_value_area_high"] = va_h
         ctx["composite_value_area_low"] = va_l
 
         # HVN / LVN zones
-        ctx["hvn_zones"] = find_hvn_zones(composite_vap)
-        ctx["lvn_zones"] = find_lvn_zones(composite_vap)
+        ctx["hvn_zones"] = find_hvn_zones(composite_vap, threshold_pct=self.config.hvn_volume_pct)
+        ctx["lvn_zones"] = find_lvn_zones(composite_vap, max_vol_pct=self.config.lvn_max_volume)
 
         # Balance / Imbalance: compare last two profiles
         if len(self._profiles) >= 2:

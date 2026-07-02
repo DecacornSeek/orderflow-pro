@@ -5,6 +5,9 @@ eine identische Kopie dieser Logik (VAP-Akkumulation, POC, Value Area,
 Regime-Heuristik, POC-Drift, Archivierung). Hier lebt sie genau einmal;
 die Subklassen liefern nur noch Reset-Grenzen (Session-Wechsel vs.
 Wochen-Anker) und ihre Kontext-Feldnamen.
+
+Alle Schwellwerte kommen aus ProfileConfig (core/profile_config.py) —
+keine Magic Numbers im Modul-Code.
 """
 
 from collections import deque
@@ -12,7 +15,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-BUCKET = 25
+from core.profile_config import ProfileConfig, PROFILE_CONFIG, resolve_config
+
+# Backward-compat alias — used by tests and external consumers.
+# Prefer config.bucket_size in new code.
+BUCKET = PROFILE_CONFIG.bucket_size
 
 
 @dataclass
@@ -43,8 +50,9 @@ class ProfileSnapshot:
 # VAP helpers
 # ---------------------------------------------------------------------------
 
-def _bucket(price: float) -> int:
-    return int(price / BUCKET) * BUCKET
+def _bucket(price: float, bucket_size: int = BUCKET) -> int:
+    """Round price down to nearest bucket boundary."""
+    return int(price / bucket_size) * bucket_size
 
 
 def _compute_ohlc(prices: List[float]) -> Dict[str, Optional[float]]:
@@ -101,13 +109,22 @@ class BaseVolumeProfile:
       - ingest(timestamp, price, size, side): Grenz-Check, dann _accumulate()
       - _profile_label(): Label für Archiv-Snapshots (None = nichts zu archivieren)
       - current_context(): Kontext-Dict mit den jeweiligen Feldnamen
+
+    Alle Schwellwerte kommen aus ProfileConfig. Ohne explizites config-Argument
+    wird PROFILE_CONFIG (die Default-Instanz) verwendet. Einzelne Felder
+    koennen weiterhin per Keyword ueberschrieben werden (Rueckwaertskompatibel
+    zu den alten Konstruktor-Signaturen vor der ProfileConfig-Einfuehrung).
     """
 
-    def __init__(self, value_area_pct: float = 0.7,
-                 poc_drift_interval_s: float = 60.0,
-                 archive_maxlen: int = 60) -> None:
-        self.value_area_pct = value_area_pct
-        self.poc_drift_interval_s = poc_drift_interval_s
+    def __init__(self, config: Optional[ProfileConfig] = None,
+                 value_area_pct: Optional[float] = None,
+                 poc_drift_interval_s: Optional[float] = None,
+                 archive_maxlen: Optional[int] = None) -> None:
+        cfg = resolve_config(config, value_area_pct=value_area_pct,
+                             poc_drift_interval_s=poc_drift_interval_s,
+                             archive_maxlen=archive_maxlen)
+        self.config = cfg
+        self._bucket_size = cfg.bucket_size
 
         self._prices: List[float] = []
         self._vap: Dict[int, float] = {}
@@ -118,13 +135,18 @@ class BaseVolumeProfile:
         self._price_min: Optional[float] = None
         self._price_max: Optional[float] = None
 
-        self._archived: deque = deque(maxlen=archive_maxlen)
+        self._archived: deque = deque(maxlen=cfg.archive_maxlen)
+        # Monotonic lifetime counter — unlike len(self._archived), this never
+        # decreases when the ring buffer evicts old entries. Consumers that
+        # need to detect "a new profile was archived" (e.g. zone rebuild
+        # cache invalidation) must use this, not len(get_archived_profiles()).
+        self._archive_total_count: int = 0
 
     # -- Akkumulation ---------------------------------------------------
 
     def _accumulate(self, timestamp: int, price: float, size: float) -> None:
         """VAP, Preis-Serie, Min/Max, Trade-Zähler und POC-Drift fortschreiben."""
-        bk = _bucket(price)
+        bk = _bucket(price, self._bucket_size)
         self._vap[bk] = self._vap.get(bk, 0.0) + size
         self._prices.append(price)
         self._trade_count += 1
@@ -133,7 +155,7 @@ class BaseVolumeProfile:
         if self._price_max is None or price > self._price_max:
             self._price_max = price
 
-        if timestamp - self._last_poc_snapshot_ms >= self.poc_drift_interval_s * 1000:
+        if timestamp - self._last_poc_snapshot_ms >= self.config.poc_drift_interval_s * 1000:
             poc = _compute_poc(self._vap)
             if poc is not None:
                 self._poc_drift.append(poc)
@@ -155,11 +177,11 @@ class BaseVolumeProfile:
         """Balanced/imbalanced heuristic based on value-area width vs price range."""
         if not self._vap or not self._prices:
             return "neutral"
-        va_h, va_l = _compute_value_area(self._vap, self.value_area_pct)
+        va_h, va_l = _compute_value_area(self._vap, self.config.value_area_pct)
         if va_h is None or va_l is None:
             return "neutral"
         # Use bucket of current price so comparison stays on the same grid as VA
-        current_bucket = _bucket(self._prices[-1])
+        current_bucket = _bucket(self._prices[-1], self._bucket_size)
         if current_bucket > va_h:
             return "imbalanced_up"
         if current_bucket < va_l:
@@ -169,7 +191,7 @@ class BaseVolumeProfile:
         price_range = p_max - p_min
         if price_range == 0:
             return "balanced"
-        return "balanced" if (va_h - va_l) / price_range >= 0.5 else "imbalanced"
+        return "balanced" if (va_h - va_l) / price_range >= self.config.regime_balanced_ratio else "imbalanced"
 
     # -- Archiv ------------------------------------------------------------
 
@@ -182,7 +204,7 @@ class BaseVolumeProfile:
             return
         ohlc = _compute_ohlc(self._prices)
         poc = _compute_poc(self._vap)
-        va_h, va_l = _compute_value_area(self._vap, self.value_area_pct)
+        va_h, va_l = _compute_value_area(self._vap, self.config.value_area_pct)
         snap = ProfileSnapshot(
             label=label,
             timestamp=int(datetime.now(timezone.utc).timestamp() * 1000),
@@ -191,9 +213,17 @@ class BaseVolumeProfile:
             vap=dict(self._vap), poc_drift=list(self._poc_drift),
         )
         self._archived.append(snap)
+        self._archive_total_count += 1
 
     def get_archived_profiles(self) -> List[ProfileSnapshot]:
         return list(self._archived)
+
+    @property
+    def archived_total_count(self) -> int:
+        """Lifetime count of archived profiles — monotonic, survives ring-buffer
+        eviction. Use this (not len(get_archived_profiles())) to detect
+        "a new profile was archived" once the archive has filled up."""
+        return self._archive_total_count
 
     # -- Kanonisches PR4a-Interface -----------------------------------------
 

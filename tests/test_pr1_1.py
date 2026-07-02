@@ -270,6 +270,7 @@ async def _run_publish_loop_with_bad_snapshot() -> tuple[list, int]:
     from core.absorption import AbsorptionDetector
     from core.divergence import DivergenceDetector
     from core.composite_profile import CompositeProfile
+    from core.business_zones import ZoneRegistry
     import agents.aggregator_agent as agg_mod
 
     metrics.reset_all()
@@ -283,6 +284,7 @@ async def _run_publish_loop_with_bad_snapshot() -> tuple[list, int]:
     absorption = AbsorptionDetector()
     divergence = DivergenceDetector(lookback=3)
     composite = CompositeProfile()
+    zones = ZoneRegistry()
     last_l2: dict = {"mid_price": 65000.0}
 
     call_count = 0
@@ -298,9 +300,12 @@ async def _run_publish_loop_with_bad_snapshot() -> tuple[list, int]:
 
     original = agg_mod.validate_aggregated_snapshot
     agg_mod.validate_aggregated_snapshot = patched_validator  # type: ignore[attr-defined]
+    from core.lethargy import LethargyDetector
+    lethargy = LethargyDetector()
     try:
         await _publish_loop(broker, cvd, last_l2, session, weekly,
-                            absorption, divergence, composite, shutdown)
+                            absorption, divergence, composite, zones,
+                            lethargy, shutdown)
     finally:
         agg_mod.validate_aggregated_snapshot = original
 

@@ -129,6 +129,92 @@ def _format_divergence(div: Optional[Dict[str, Any]]) -> str:
     return f"  - CVD Divergence: {label} (price={div.get('price'):.0f}, cvd={div.get('cvd_delta'):+.2f})"
 
 
+def _format_zones(zones_ctx: Dict[str, Any]) -> str:
+    """Format business zones context for the prompt."""
+    if not zones_ctx or zones_ctx.get("zone_count", 0) == 0:
+        return ""
+    parts = [f"  - Zones: {zones_ctx['zone_count']} total"]
+    at = zones_ctx.get("zone_at")
+    if at:
+        parts.append(f"  - At: ${at['price_low']}-${at['price_high']} "
+                     f"({at['kind']}, recurrence={at['recurrence']}, "
+                     f"state={at['state']})")
+    below = zones_ctx.get("zone_below")
+    if below:
+        parts.append(f"  - Below: ${below['price_low']}-${below['price_high']} "
+                     f"({below['kind']}, r{below['recurrence']})")
+    above = zones_ctx.get("zone_above")
+    if above:
+        parts.append(f"  - Above: ${above['price_low']}-${above['price_high']} "
+                     f"({above['kind']}, r{above['recurrence']})")
+    unrepaired = zones_ctx.get("n_unrepaired_single_prints", 0)
+    if unrepaired > 0:
+        parts.append(f"  - Unrepaired Single Prints: {unrepaired}")
+    return "\n".join(parts)
+
+
+def _format_road_map(rm_ctx: Dict[str, Any]) -> str:
+    """Format road map context for the prompt."""
+    if not rm_ctx or rm_ctx.get("day_type") == "neutral":
+        return ""
+    day_type = rm_ctx["day_type"]
+    direction = rm_ctx.get("dominant_direction", "none")
+    setups = rm_ctx.get("allowed_setups", [])
+    parts = [
+        f"  - Day Type: {day_type}",
+        f"  - Dominant Direction: {direction}",
+        f"  - Allowed Setups: {', '.join(setups)}",
+    ]
+    pa = rm_ctx.get("point_a")
+    pb = rm_ctx.get("point_b")
+    if pa:
+        parts.append(f"  - Point A: ${pa['price_low']}-${pa['price_high']} ({pa['kind']})")
+    if pb:
+        parts.append(f"  - Point B: ${pb['price_low']}-${pb['price_high']} ({pb['kind']})")
+    sp_above = rm_ctx.get("expected_speed_above")
+    sp_below = rm_ctx.get("expected_speed_below")
+    if sp_above or sp_below:
+        parts.append(f"  - Expected Speed: above={sp_above}, below={sp_below}")
+    return "\n".join(parts)
+
+
+def _format_lethargy(lctx: Dict[str, Any]) -> str:
+    """Format lethargy context for the prompt."""
+    if not lctx:
+        return ""
+    detected = lctx.get("lethargy_detected", False)
+    score = lctx.get("lethargy_score", 0.0)
+    if not detected and score < 0.3:
+        return ""  # only report when significant
+    parts = [f"  - Lethargy: {'DETECTED' if detected else 'building'} (score={score:.2f})"]
+    dims = lctx.get("dimensions_decayed_names", [])
+    if dims:
+        parts.append(f"  - Decaying: {', '.join(dims)}")
+    at_zone = lctx.get("at_zone", False)
+    proximity = lctx.get("zone_proximity")
+    if at_zone:
+        parts.append(f"  - At zone: YES (proximity={proximity})")
+    return "\n".join(parts)
+
+
+def _format_vpoc_trend(vctx: Dict[str, Any]) -> str:
+    """Format multi-week VPOC trend context for the prompt."""
+    if not vctx or vctx.get("direction") == "insufficient_data":
+        return ""
+    direction = vctx["direction"]
+    strength = vctx.get("strength", 0.0)
+    slope = vctx.get("slope", 0.0)
+    consecutive = vctx.get("consecutive_weeks", 0)
+    weeks = vctx.get("weeks_analyzed", 0)
+    direction_label = {"rising": "STEIGEND", "falling": "FALLEND", "flattening": "FLACH"}.get(direction, direction)
+    parts = [
+        f"  - Multi-Week VPOC: {direction_label} "
+        f"(strength={strength:.2f}, slope=${slope:.1f}/wk, "
+        f"{consecutive}/{weeks}wk consecutive)",
+    ]
+    return "\n".join(parts)
+
+
 def _build_prompt(snapshots: list, patterns: list) -> str:
     latest = snapshots[-1]
     prev = snapshots[0] if len(snapshots) > 1 else latest
@@ -171,10 +257,15 @@ def _build_prompt(snapshots: list, patterns: list) -> str:
     shape_block = _format_shape(latest.get("profile_shape", {}))
     composite_block = _format_composite(latest.get("composite_context", {}))
     divergence_block = _format_divergence(latest.get("divergence"))
+    zones_block = _format_zones(latest.get("business_zones", {}))
+    road_map_block = _format_road_map(latest.get("road_map", {}))
+    lethargy_block = _format_lethargy(latest.get("lethargy", {}))
+    vpoc_trend_block = _format_vpoc_trend(latest.get("vpoc_trend", {}))
 
     context_sections = "\n".join(
         s for s in [session_block, weekly_block, shape_block, composite_block,
-                    divergence_block] if s
+                    divergence_block, zones_block, road_map_block,
+                    lethargy_block, vpoc_trend_block] if s
     )
 
     return (
@@ -198,6 +289,13 @@ def _build_prompt(snapshots: list, patterns: list) -> str:
         f"Ordne die Muster ein: Ist Absorption Akkumulation oder Distribution? "
         f"Passt die Divergenz zum CVD-Trend? Stimmt die Profil-Form mit "
         f"der aktuellen Preisrichtung ueberein?\n"
+        f"\n"
+        f"Nutze die Road Map (erlaubte Setups, Point A->B, Zonen-Geschwindigkeit) "
+        f"und den VPOC-Trend (globaler Geldfluss) fuer den Kontext. "
+        f"Lethargie an einer Zone = Markt wird muede = erhoehte Reaktions-"
+        f"wahrscheinlichkeit. Verwende KEINEN der internen Begriffe "
+        f"(CVD, VA, POC etc.) im Output — uebersetze sie in klare "
+        f"Marktsprache fuer einen Trader.\n"
         f"\n"
         f'Format: "[BULLISH/BEARISH/NEUTRAL] - <Signal>".'
     )

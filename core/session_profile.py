@@ -13,11 +13,15 @@ Phase transitions archive the current profile and start a fresh one.
 
 Die gemeinsame Profil-Maschinerie (VAP/POC/VA/Regime/Archiv) lebt seit
 Sprint B in core/volume_profile.py — hier nur Session-Spezifika.
+
+Alle Schwellwerte kommen aus ProfileConfig (core/profile_config.py).
 """
 
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from core.profile_config import ProfileConfig, PROFILE_CONFIG, resolve_config
 
 # Re-Export für bestehende Importe (weekly_profile, composite_profile, tests)
 from core.volume_profile import (  # noqa: F401
@@ -94,16 +98,17 @@ def phase_for_ts(ts_ms: int) -> str:
 # Session Profile
 # ---------------------------------------------------------------------------
 
-PRE_SESSION_BASELINE_PATH = Path(__file__).parent.parent / "data" / "pre_session_baseline.json"
-
 
 class SessionProfile(BaseVolumeProfile):
-    def __init__(self, value_area_pct: float = 0.7, initial_balance_minutes: int = 60,
-                 poc_drift_interval_s: float = 60.0) -> None:
-        super().__init__(value_area_pct=value_area_pct,
-                         poc_drift_interval_s=poc_drift_interval_s,
-                         archive_maxlen=60)
-        self.initial_balance_minutes = initial_balance_minutes
+    def __init__(self, config: Optional[ProfileConfig] = None,
+                 value_area_pct: Optional[float] = None,
+                 initial_balance_minutes: Optional[int] = None,
+                 poc_drift_interval_s: Optional[float] = None) -> None:
+        cfg = resolve_config(config, value_area_pct=value_area_pct,
+                             initial_balance_minutes=initial_balance_minutes,
+                             poc_drift_interval_s=poc_drift_interval_s)
+        super().__init__(config=cfg)
+        cfg = self.config
 
         self.current_session: Optional[str] = None
         self._initial_balance_high: Optional[float] = None
@@ -115,7 +120,12 @@ class SessionProfile(BaseVolumeProfile):
         self._ps_baseline: Optional[Dict[str, float]] = None
         self._ps_volume: Dict[str, float] = {}
         self._ps_trade_count: Dict[str, int] = {}
-        self.anomaly_factor_threshold: float = 1.5
+
+        # Baseline path: explicit config value or default relative to project root.
+        self._ps_baseline_path: Path = (
+            cfg.pre_session_baseline_path
+            or Path(__file__).parent.parent / "data" / "pre_session_baseline.json"
+        )
 
     @property
     def _trade_count_in_session(self) -> int:
@@ -139,7 +149,7 @@ class SessionProfile(BaseVolumeProfile):
 
         if not self._ib_complete and self._start_ms is not None:
             elapsed_min = (timestamp - self._start_ms) / 60_000
-            if elapsed_min <= self.initial_balance_minutes:
+            if elapsed_min <= self.config.initial_balance_minutes:
                 if self._initial_balance_high is None or price > self._initial_balance_high:
                     self._initial_balance_high = price
                 if self._initial_balance_low is None or price < self._initial_balance_low:
@@ -160,7 +170,7 @@ class SessionProfile(BaseVolumeProfile):
         self._last_ts_ms = timestamp
 
     def _load_ps_baseline(self) -> None:
-        path = PRE_SESSION_BASELINE_PATH
+        path = self._ps_baseline_path
         if path.exists():
             import json
             try:
@@ -172,8 +182,8 @@ class SessionProfile(BaseVolumeProfile):
     def _save_ps_baseline(self) -> None:
         if self._ps_baseline is not None:
             import json
-            PRE_SESSION_BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with open(PRE_SESSION_BASELINE_PATH, "w") as f:
+            self._ps_baseline_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._ps_baseline_path, "w") as f:
                 json.dump(self._ps_baseline, f, indent=2)
 
     @staticmethod
@@ -226,7 +236,7 @@ class SessionProfile(BaseVolumeProfile):
         if baseline_vol <= 0:
             return None
         factor = current_vol / baseline_vol
-        if factor < self.anomaly_factor_threshold:
+        if factor < self.config.anomaly_factor_threshold:
             return None
         return {
             "anomaly_factor": round(factor, 2),
@@ -239,7 +249,7 @@ class SessionProfile(BaseVolumeProfile):
             return {"session": "N/A"}
         ohlc = _compute_ohlc(self._prices)
         poc = _compute_poc(self._vap)
-        va_h, va_l = _compute_value_area(self._vap, self.value_area_pct)
+        va_h, va_l = _compute_value_area(self._vap, self.config.value_area_pct)
         current_price = self._prices[-1] if self._prices else None
 
         ctx: Dict[str, Any] = {
@@ -250,8 +260,8 @@ class SessionProfile(BaseVolumeProfile):
                 phase_for_ts(self._last_ts_ms) if self._last_ts_ms is not None else None
             ),
             "session_elapsed_seconds": (
-                int((datetime.now(timezone.utc).timestamp() * 1000 - (self._start_ms or 0)) / 1000)
-                if self._start_ms else 0
+                int(((self._last_ts_ms or 0) - (self._start_ms or 0)) / 1000)
+                if self._start_ms and self._last_ts_ms else 0
             ),
             "session_poc": poc, "session_value_area_high": va_h, "session_value_area_low": va_l,
             "session_volume": round(sum(self._vap.values()), 4),
@@ -275,7 +285,7 @@ class SessionProfile(BaseVolumeProfile):
             drift_range = max(self._poc_drift) - min(self._poc_drift)
             total_range = (max(self._prices) - min(self._prices)) if len(self._prices) > 1 else 1.0
             ctx["poc_drift_buckets"] = drift_range
-            ctx["poc_drift_ratio"] = round(drift_range / total_range * BUCKET, 4) if total_range > 0 else 0
+            ctx["poc_drift_ratio"] = round(drift_range / total_range * self._bucket_size, 4) if total_range > 0 else 0
         return ctx
 
     def reset_if_needed(self, ts_ms: int) -> bool:

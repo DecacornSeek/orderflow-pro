@@ -1,0 +1,375 @@
+
+<style>
+  .section { margin: 0 0 1.5rem; }
+  .section-title { font-size: 13px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 10px; }
+  .card { background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin: 0 0 10px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .card-title { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+  .badge { font-size: 11px; padding: 3px 8px; border-radius: 20px; font-weight: 500; }
+  .badge-best { background: var(--bg-success); color: var(--text-success); }
+  .badge-tight { background: var(--bg-danger); color: var(--text-danger); }
+  .badge-mid { background: var(--bg-warning); color: var(--text-warning); }
+  .badge-info { background: var(--bg-accent); color: var(--text-accent); }
+  .badge-kraken { background: var(--bg-pro); color: var(--text-pro); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat { background: var(--surface-1); border-radius: 8px; padding: 10px 12px; }
+  .stat-label { font-size: 11px; color: var(--text-muted); margin: 0 0 4px; }
+  .stat-val { font-size: 16px; font-weight: 500; color: var(--text-primary); }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 0.5px solid var(--border); font-size: 13px; }
+  .row:last-child { border-bottom: none; }
+  .row-label { color: var(--text-secondary); }
+  .row-val { font-weight: 500; color: var(--text-primary); text-align: right; }
+  .row-val.green { color: var(--text-success); }
+  .row-val.red { color: var(--text-danger); }
+  .row-val.blue { color: var(--text-accent); }
+  .row-val.amber { color: var(--text-warning); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .tab { font-size: 12px; padding: 4px 12px; border-radius: 20px; border: 0.5px solid var(--border); background: var(--surface-1); color: var(--text-secondary); cursor: pointer; }
+  .tab.active { background: var(--text-primary); color: var(--surface-2); border-color: var(--text-primary); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .note { font-size: 12px; color: var(--text-muted); background: var(--surface-1); border-left: 3px solid var(--border-accent); padding: 8px 10px; border-radius: 0 6px 6px 0; margin: 8px 0 0; }
+  .note.warn { border-left-color: var(--border-warning); }
+  .note.danger { border-left-color: var(--border-danger); }
+  .divider { border: none; border-top: 0.5px solid var(--border); margin: 1.2rem 0; }
+  .chip { display: inline-block; font-size: 11px; background: var(--surface-1); border: 0.5px solid var(--border); border-radius: 4px; padding: 2px 6px; margin: 2px; color: var(--text-secondary); }
+  .chip.green { background: var(--bg-success); border-color: var(--border-success); color: var(--text-success); }
+  .chip.red { background: var(--bg-danger); border-color: var(--border-danger); color: var(--text-danger); }
+  .section-label { font-size: 12px; font-weight: 500; color: var(--text-muted); margin: 12px 0 6px; }
+  .model-card { background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 10px; padding: 12px; }
+  .model-card.featured { border: 1.5px solid var(--border-accent); }
+</style>
+
+<h2 class="sr-only">Breakout prop firm crypto rules for BTC on $10K and $25K accounts</h2>
+
+<div class="section">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+    <span class="badge badge-kraken">Kraken-backed</span>
+    <span class="badge badge-info">Crypto-only</span>
+    <span class="badge badge-best">No time limits</span>
+    <span class="badge badge-best">On-demand USDC payouts</span>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Account selector</div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchAcc('b10k')">$10K account</button>
+    <button class="tab" onclick="switchAcc('b25k')">$25K account</button>
+  </div>
+</div>
+
+<div id="b10k" class="panel active">
+  <div class="section">
+    <div class="section-title">Evaluation type</div>
+    <div class="tabs" id="btabs-10k">
+      <button class="tab active" onclick="switchBM('10k','classic1')">Classic 1-step</button>
+      <button class="tab" onclick="switchBM('10k','classic2')">Classic 2-step</button>
+      <button class="tab" onclick="switchBM('10k','pro')">Elite Pro</button>
+      <button class="tab" onclick="switchBM('10k','turbo')">Elite Turbo</button>
+    </div>
+  </div>
+
+  <div id="b10k-classic1" class="panel active">
+    <div class="card featured">
+      <div class="card-header"><div class="card-title">Classic 1-step — $10K</div><span class="badge badge-best">Most room to trade</span></div>
+      <div class="grid2">
+        <div>
+          <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$1,000 (10%)</span></div>
+          <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$300 (3%)</span></div>
+          <div class="row"><span class="row-label">Max drawdown</span><span class="row-val red">$600 (6%) static</span></div>
+          <div class="row"><span class="row-label">Drawdown type</span><span class="row-val green">Static (never moves)</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="row-label">Time limit</span><span class="row-val green">None</span></div>
+          <div class="row"><span class="row-label">Min trading days</span><span class="row-val green">None</span></div>
+          <div class="row"><span class="row-label">Consistency rule</span><span class="row-val green">None</span></div>
+          <div class="row"><span class="row-label">Profit split</span><span class="row-val green">80% (90% add-on)</span></div>
+        </div>
+      </div>
+      <div class="note">Static drawdown = floor is fixed at $9,400 forever. Even if you grow to $15K, your floor stays at $9,400. This is the most BTC-friendly model — your buffer only grows, never shrinks.</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Funded account — post-pass</div></div>
+      <div class="grid2">
+        <div>
+          <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$300 (3%) — same rule</span></div>
+          <div class="row"><span class="row-label">Max drawdown</span><span class="row-val red">$600 (6%) static</span></div>
+          <div class="row"><span class="row-label">Payout timing</span><span class="row-val green">On-demand 24/7</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="row-label">Payout currency</span><span class="row-val blue">USDC (ERC-20)</span></div>
+          <div class="row"><span class="row-label">Min payout</span><span class="row-val">$50</span></div>
+          <div class="row"><span class="row-label">Trader bonus</span><span class="row-val green">$100</span></div>
+        </div>
+      </div>
+      <div class="note">95% split unlocks after 3 months of consistency + 2 payouts with no open positions. Daily loss resets 00:30 UTC based on prior day closing balance.</div>
+    </div>
+  </div>
+
+  <div id="b10k-classic2" class="panel">
+    <div class="grid2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Phase 1</div><span class="badge badge-mid">5% target</span></div>
+        <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$500 (5%)</span></div>
+        <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$500 (5%)</span></div>
+        <div class="row"><span class="row-label">Max drawdown</span><span class="row-val amber">$800 (8%) trailing</span></div>
+        <div class="row"><span class="row-label">Drawdown type</span><span class="row-val amber">Trailing!</span></div>
+        <div class="row"><span class="row-label">Time limit</span><span class="row-val green">None</span></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Phase 2</div><span class="badge badge-mid">10% target</span></div>
+        <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$1,000 (10%)</span></div>
+        <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$500 (5%)</span></div>
+        <div class="row"><span class="row-label">Max drawdown</span><span class="row-val amber">$800 (8%) trailing</span></div>
+        <div class="row"><span class="row-label">Time limit</span><span class="row-val green">None</span></div>
+        <div class="row"><span class="row-label">Profit split</span><span class="row-val green">80% (90% add-on)</span></div>
+      </div>
+    </div>
+    <div class="note warn">Trailing drawdown: your floor chases your high-water mark. If you have a big green day then pull back, the floor moves up and tightens your buffer. More cushion on paper (8% vs 6%) but harder to manage on BTC where 3–5% intraday swings are common. On 2-step funded accounts, payouts also reduce your HWM — plan withdrawals carefully.</div>
+  </div>
+
+  <div id="b10k-pro" class="panel">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Elite Pro — $10K</div><span class="badge badge-tight">12% target, higher price</span></div>
+      <div class="grid2">
+        <div>
+          <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$1,200 (12%)</span></div>
+          <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$300 (3%)</span></div>
+          <div class="row"><span class="row-label">Max drawdown</span><span class="row-val red">$500 (5%) static</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="row-label">Drawdown type</span><span class="row-val green">Static</span></div>
+          <div class="row"><span class="row-label">Time limit</span><span class="row-val green">None</span></div>
+          <div class="row"><span class="row-label">Profit split</span><span class="row-val green">80–90%</span></div>
+        </div>
+      </div>
+      <div class="note warn">Higher profit target + tighter overall drawdown than Classic. Only makes sense if fees are meaningfully lower for your size.</div>
+    </div>
+  </div>
+
+  <div id="b10k-turbo" class="panel">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Elite Turbo — $10K</div><span class="badge badge-tight">Cheapest, tightest</span></div>
+      <div class="grid2">
+        <div>
+          <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$900 (9%)</span></div>
+          <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$300 (3%)</span></div>
+          <div class="row"><span class="row-label">Max drawdown</span><span class="row-val red">$300 (3%) static</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="row-label">Drawdown type</span><span class="row-val green">Static</span></div>
+          <div class="row"><span class="row-label">Time limit</span><span class="row-val green">None</span></div>
+          <div class="row"><span class="row-label">Profit split</span><span class="row-val green">80–90%</span></div>
+        </div>
+      </div>
+      <div class="note danger">3% max drawdown = $300 on a $10K account. BTC can move 3–5% in a single news spike. This model is only viable for ultra-tight scalpers who never let a position breathe. Not recommended for swing or trend strategies.</div>
+    </div>
+  </div>
+</div>
+
+<div id="b25k" class="panel">
+  <div class="section">
+    <div class="section-title">Evaluation type</div>
+    <div class="tabs" id="btabs-25k">
+      <button class="tab active" onclick="switchBM('25k','classic1')">Classic 1-step</button>
+      <button class="tab" onclick="switchBM('25k','classic2')">Classic 2-step</button>
+      <button class="tab" onclick="switchBM('25k','pro')">Elite Pro</button>
+      <button class="tab" onclick="switchBM('25k','turbo')">Elite Turbo</button>
+    </div>
+  </div>
+
+  <div id="b25k-classic1" class="panel active">
+    <div class="card featured">
+      <div class="card-header"><div class="card-title">Classic 1-step — $25K</div><span class="badge badge-best">Most room to trade</span></div>
+      <div class="grid2">
+        <div>
+          <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$2,500 (10%)</span></div>
+          <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$750 (3%)</span></div>
+          <div class="row"><span class="row-label">Max drawdown</span><span class="row-val red">$1,500 (6%) static</span></div>
+          <div class="row"><span class="row-label">Drawdown type</span><span class="row-val green">Static</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="row-label">Time limit</span><span class="row-val green">None</span></div>
+          <div class="row"><span class="row-label">Min trading days</span><span class="row-val green">None</span></div>
+          <div class="row"><span class="row-label">Consistency rule</span><span class="row-val green">None</span></div>
+          <div class="row"><span class="row-label">Profit split</span><span class="row-val green">80% (90% add-on)</span></div>
+        </div>
+      </div>
+      <div class="note">Floor fixed at $23,500 forever. Trader bonus: $300 on passing.</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Funded — post-pass</div></div>
+      <div class="grid2">
+        <div>
+          <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$750 (3%) — same</span></div>
+          <div class="row"><span class="row-label">Max drawdown</span><span class="row-val red">$1,500 (6%) static</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="row-label">Payout</span><span class="row-val green">On-demand 24/7 USDC</span></div>
+          <div class="row"><span class="row-label">95% split path</span><span class="row-val blue">3 months + 2 payouts</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="b25k-classic2" class="panel">
+    <div class="grid2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Phase 1</div><span class="badge badge-mid">5% target</span></div>
+        <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$1,250 (5%)</span></div>
+        <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$1,250 (5%)</span></div>
+        <div class="row"><span class="row-label">Max drawdown</span><span class="row-val amber">$2,000 (8%) trailing</span></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Phase 2</div><span class="badge badge-mid">10% target</span></div>
+        <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$2,500 (10%)</span></div>
+        <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$1,250 (5%)</span></div>
+        <div class="row"><span class="row-label">Max drawdown</span><span class="row-val amber">$2,000 (8%) trailing</span></div>
+      </div>
+    </div>
+    <div class="note warn">Trailing drawdown on 2-step. Daily limit is 5% ($1,250) — more generous than 1-step's 3%, but trailing DD means profits can erode your buffer if BTC reverses after a strong session.</div>
+  </div>
+
+  <div id="b25k-pro" class="panel">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Elite Pro — $25K</div><span class="badge badge-tight">12% target</span></div>
+      <div class="grid2">
+        <div>
+          <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$3,000 (12%)</span></div>
+          <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$750 (3%)</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="row-label">Max drawdown</span><span class="row-val red">$1,250 (5%) static</span></div>
+          <div class="row"><span class="row-label">Profit split</span><span class="row-val green">80–90%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="b25k-turbo" class="panel">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Elite Turbo — $25K</div><span class="badge badge-tight">Cheapest, tightest</span></div>
+      <div class="grid2">
+        <div>
+          <div class="row"><span class="row-label">Profit target</span><span class="row-val green">$2,250 (9%)</span></div>
+          <div class="row"><span class="row-label">Max daily loss</span><span class="row-val red">$750 (3%)</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="row-label">Max drawdown</span><span class="row-val red">$750 (3%) static</span></div>
+          <div class="row"><span class="row-label">Eval fee</span><span class="row-val">~$95</span></div>
+        </div>
+      </div>
+      <div class="note danger">$750 total max loss on a $25K account. One bad BTC swing at 5:1 leverage on 0.1 BTC = ~$525 on a 5% BTC move. You're perpetually one trade from breach.</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div class="section">
+  <div class="section-title">BTC contract specs — Breakout Terminal (perpetuals)</div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Instrument structure</div></div>
+      <div class="row"><span class="row-label">Type</span><span class="row-val blue">Perpetual futures (USDT margined)</span></div>
+      <div class="row"><span class="row-label">BTC leverage</span><span class="row-val blue">5:1 max (hard-enforced)</span></div>
+      <div class="row"><span class="row-label">ETH leverage</span><span class="row-val blue">5:1 max</span></div>
+      <div class="row"><span class="row-label">Altcoin leverage</span><span class="row-val">2:1 max</span></div>
+      <div class="row"><span class="row-label">Pairs available</span><span class="row-val">62 crypto pairs (BTC, ETH, SOL+)</span></div>
+      <div class="row"><span class="row-label">Contract expiry</span><span class="row-val green">None (perpetuals)</span></div>
+      <div class="row"><span class="row-label">Platform</span><span class="row-val">Breakout Terminal (web/iOS/Android)</span></div>
+      <div class="row"><span class="row-label">MT5 / MT4</span><span class="row-val red">Not supported</span></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Costs & resets</div></div>
+      <div class="row"><span class="row-label">Commission</span><span class="row-val amber">0.04% per side (0.08% RT)</span></div>
+      <div class="row"><span class="row-label">Commission on $10K notional</span><span class="row-val amber">$4/side = $8 round trip</span></div>
+      <div class="row"><span class="row-label">Overnight swap</span><span class="row-val amber">0.09%/day (at 12:00 AM UTC)</span></div>
+      <div class="row"><span class="row-label">Daily loss reset</span><span class="row-val">00:30 UTC (prev day balance)</span></div>
+      <div class="row"><span class="row-label">Weekend trading</span><span class="row-val green">Allowed 24/7</span></div>
+      <div class="row"><span class="row-label">News trading</span><span class="row-val green">Allowed (no restrictions)</span></div>
+      <div class="row"><span class="row-label">Breach outcome</span><span class="row-val red">Permanent — no appeals</span></div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div class="section">
+  <div class="section-title">BTC position sizing — Breakout (@ BTC ~$105,000)</div>
+  <div class="card">
+    <div class="section-label">$10K account — Classic 1-step (daily limit = $300, max DD = $600)</div>
+    <div class="grid3">
+      <div class="stat"><div class="stat-label">0.01 BTC (5:1)</div><div class="stat-val" style="font-size:14px">$50 notional<br><span style="font-size:11px;color:var(--text-muted)">1% BTC move = $0.50 P&L<br>Commission: $0.04 RT</span></div></div>
+      <div class="stat"><div class="stat-label">0.1 BTC (5:1)</div><div class="stat-val" style="font-size:14px">$10,500 notional<br><span style="font-size:11px;color:var(--text-muted)">1% BTC move = $105 P&L<br>Commission: $8.40 RT</span></div></div>
+      <div class="stat"><div class="stat-label">0.476 BTC (5:1 max)</div><div class="stat-val" style="font-size:14px">$50,000 notional<br><span style="font-size:11px;color:var(--text-muted)">1% BTC move = $500 P&L<br>= full daily limit in 1 move!</span></div></div>
+    </div>
+    <div class="section-label">$25K account — Classic 1-step (daily limit = $750, max DD = $1,500)</div>
+    <div class="grid3">
+      <div class="stat"><div class="stat-label">0.1 BTC (5:1)</div><div class="stat-val" style="font-size:14px">$10,500 notional<br><span style="font-size:11px;color:var(--text-muted)">1% BTC move = $105 P&L<br>Commission: $8.40 RT</span></div></div>
+      <div class="stat"><div class="stat-label">0.3 BTC (5:1)</div><div class="stat-val" style="font-size:14px">$31,500 notional<br><span style="font-size:11px;color:var(--text-muted)">1% BTC move = $315 P&L<br>Commission: $25.20 RT</span></div></div>
+      <div class="stat"><div class="stat-label">1.19 BTC (5:1 max)</div><div class="stat-val" style="font-size:14px">$125,000 notional<br><span style="font-size:11px;color:var(--text-muted)">1% BTC move = $1,250 P&L<br>= full daily limit in 1 move!</span></div></div>
+    </div>
+    <div class="note">At 5:1 max leverage and BTC $105K: risk 1.5% of account per trade to stay safe. On $10K = $150 risk per trade. On $25K = $375 risk per trade. Always size so a 3% adverse BTC move on your position costs less than your daily limit.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div class="section">
+  <div class="section-title">What's allowed vs. prohibited</div>
+  <div class="grid2">
+    <div>
+      <div class="section-label">Allowed</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="chip green">News trading</span>
+        <span class="chip green">Weekend holding</span>
+        <span class="chip green">Scalping</span>
+        <span class="chip green">Swing trading</span>
+        <span class="chip green">EAs/bots (no support)</span>
+        <span class="chip green">Hedging (same account)</span>
+        <span class="chip green">24/7 trading</span>
+        <span class="chip green">Multiple payouts/day</span>
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Prohibited (immediate breach)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="chip red">Copy trading</span>
+        <span class="chip red">Latency / price arbitrage</span>
+        <span class="chip red">Exploiting pricing errors</span>
+        <span class="chip red">Account sharing</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchAcc(acc) {
+  ['b10k','b25k'].forEach(a => {
+    document.getElementById(a).classList.toggle('active', a === acc);
+  });
+  document.querySelectorAll('.tabs button').forEach(b => {
+    const oc = b.getAttribute('onclick') || '';
+    if (oc.includes('switchAcc')) {
+      b.classList.toggle('active', oc.includes("'" + acc + "'"));
+    }
+  });
+}
+
+function switchBM(acc, model) {
+  const tabContainer = document.getElementById('btabs-' + acc);
+  if (!tabContainer) return;
+  tabContainer.querySelectorAll('button').forEach(b => {
+    const oc = b.getAttribute('onclick') || '';
+    b.classList.toggle('active', oc === "switchBM('" + acc + "','" + model + "')");
+  });
+  ['classic1','classic2','pro','turbo'].forEach(m => {
+    const el = document.getElementById('b' + acc + '-' + m);
+    if (el) el.classList.toggle('active', m === model);
+  });
+}
+</script>

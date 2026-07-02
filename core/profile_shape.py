@@ -12,26 +12,29 @@ Shape definitions:
 Algorithm:
   1. Smooth histogram with simple moving average
   2. Find local maxima (peaks) above threshold
-  3. Count significant peaks (>= X% of max volume, default 60%)
+  3. Count significant peaks (>= X% of max volume)
   4. Determine shape from peak positions relative to total range
+
+Alle Schwellwerte kommen aus ProfileConfig.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-SMOOTHING_WINDOW = 3         # SMA window for smoothing
-SIGNIFICANT_PEAK_PCT = 0.6   # peak must be at least this fraction of max volume
+from core.profile_config import ProfileConfig, PROFILE_CONFIG
 
 
-def smooth_vap(vap: Dict[int, float], window: int = SMOOTHING_WINDOW) -> Dict[int, float]:
+def smooth_vap(vap: Dict[int, float], window: Optional[int] = None) -> Dict[int, float]:
     """Apply simple moving average to VAP data.
 
     Args:
         vap: price_bucket -> volume mapping.
-        window: SMA window size (odd number recommended).
+        window: SMA window size (odd number recommended). Defaults to config.
 
     Returns:
         New dict with smoothed volumes (same keys).
     """
+    if window is None:
+        window = PROFILE_CONFIG.smoothing_window
     if not vap:
         return {}
 
@@ -80,12 +83,15 @@ def find_peaks(smoothed: Dict[int, float]) -> List[Tuple[int, float]]:
 
 
 def classify_shape(vap: Optional[Dict[int, float]],
-                   significant_pct: float = SIGNIFICANT_PEAK_PCT) -> Dict[str, any]:
+                   config: Optional[ProfileConfig] = None,
+                   significant_pct: Optional[float] = None) -> Dict[str, Any]:
     """Classify the shape of a VAP profile.
 
     Args:
         vap: price_bucket -> volume mapping. None or empty returns "unknown".
-        significant_pct: Minimum fraction of max volume for a peak to be "significant".
+        config: ProfileConfig for thresholds. Defaults to PROFILE_CONFIG.
+        significant_pct: Override for peak significance fraction.
+            Defaults to config.significant_peak_pct.
 
     Returns:
         dict with keys:
@@ -97,7 +103,11 @@ def classify_shape(vap: Optional[Dict[int, float]],
             secondary_peak_bucket: int or None (if B-shape)
             smoothed_vap: Dict[int, float] (smoothed values)
     """
-    result: Dict[str, any] = {
+    cfg = config or PROFILE_CONFIG
+    if significant_pct is None:
+        significant_pct = cfg.significant_peak_pct
+
+    result: Dict[str, Any] = {
         "shape": "unknown",
         "peak_count": 0,
         "significant_peaks": 0,
@@ -110,7 +120,7 @@ def classify_shape(vap: Optional[Dict[int, float]],
     if not vap:
         return result
 
-    smoothed = smooth_vap(vap)
+    smoothed = smooth_vap(vap, window=cfg.smoothing_window)
     result["smoothed_vap"] = smoothed
 
     peaks = find_peaks(smoothed)
@@ -146,9 +156,9 @@ def classify_shape(vap: Optional[Dict[int, float]],
             else:
                 # Normalised position of peak: 0.0 = bottom, 1.0 = top
                 pos = (top_bucket - min_b) / total_range
-                if pos < 0.33:
+                if pos < cfg.peak_position_lower:
                     result["shape"] = "b"
-                elif pos > 0.67:
+                elif pos > cfg.peak_position_upper:
                     result["shape"] = "P"
                 else:
                     result["shape"] = "D"

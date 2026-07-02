@@ -232,10 +232,8 @@ class CVDFeatures:
 # Z-Score Significance: volumetrische Anomalie vs. historische Baseline
 # Absorption Detection: |delta|/volume Ratio
 # Session VAP: Volume at Price pro Session
-
-# FEHLT NOCH (kritisch):
-# Delta Divergenz: Preis macht neues High, CVD nicht
-# → Stärkstes deterministisches Reversal-Signal
+# Delta Divergenz: detect_delta_divergence() — IMPLEMENTIERT (Sprint B),
+#   live im AGGREGATED payload als "delta_divergence"
 ```
 
 ### 4.3 Session & Market Structure Features
@@ -482,27 +480,53 @@ HETZNER VPS (Produktion)
 6. Aggregator: CVD pro Stream + Coinbase Premium + Divergenz
 7. **Test:** 5 CVD Streams laufen parallel, Divergenz berechnet
 
-### Sprint B — Delta Divergenz + Session Profile
+### Sprint B — Delta Divergenz + Session Profile — ✅ COMPLETE (2026-07-02)
 **Ziel:** Stärkstes deterministisches Signal implementieren
-1. `detect_delta_divergence()` in `core/pattern_engine.py`
-2. `core/session_profile.py` — Session-Phasen als benannte Zustände
-3. Weekly VAP konsolidieren (aktuell 2 separate Instanzen)
-4. VAP/POC/Value Area in Signal Agent Prompt (Fix aus Backlog)
+1. ✅ `detect_delta_divergence()` in `core/pattern_engine.py`
+2. ✅ `core/session_profile.py` — Session-Phasen als benannte Zustände
+3. ✅ Weekly VAP konsolidieren → `core/volume_profile.py` (BaseVolumeProfile)
+4. ⏳ VAP/POC/Value Area in Signal Agent Prompt (offen — siehe Backlog)
 
-### Sprint C — Strategy Engine
+### Sprint B2 — Interpretations-Layer (Methodology Steps 5–8) — ✅ COMPLETE (2026-07-02)
+**Ziel:** Kontext → Plan: die Schicht zwischen Feature Engine und Strategy Engine.
+Kanonische Referenz: `docs/METHODOLOGY_STEPS_5-8.md`
+1. ✅ `core/profile_structure.py` — Single Prints, schwache/starke Extreme,
+   Double Distribution (Step 5)
+2. ✅ `core/business_zones.py` — Zone Registry aus archivierten Profilen,
+   Recurrence-Stärke, tested/repaired-Zustand, Point A → Point B (Step 6)
+3. ✅ `core/road_map.py` — day_type aus Session+Weekly-Regime, Setup-Matrix,
+   erwartete Geschwindigkeit pro Zone (Step 7)
+4. ✅ AGGREGATED payload: `profile_structure`, `business_zones`, `road_map`
+   (additiv, per try/except isoliert)
+5. ✅ Backlog: Lethargy-Detektor, Inside Bar, VPOC-Trend, Signal Prompt (completed in Sprint B3)
+
+### Sprint B3 — Backlog-Abarbeitung — ✅ COMPLETE (2026-07-02)
+**Ziel:** Vier dokumentierte Backlog-Items aus Step 8 abarbeiten.
+1. ✅ `core/lethargy.py` — 3-dimensionale Lethargie-Signatur (Volume/Range/Speed Decay)
+2. ✅ `core/candle_classifier.py` — INSIDE_BAR (Priority 5) mit prev_high/prev_low Tracking
+3. ✅ `core/vpoc_trend.py` — Multi-Week VPOC Trend (Linear Regression, rising/falling/flattening)
+4. ✅ `agents/signal_agent.py` — Road Map + Zones + Lethargy + VPOC Trend im Prompt
+
+### Sprint C — Strategy Engine — 🚧 IN PROGRESS (2026-07-02)
 **Ziel:** NCI als backtestbare Python-Funktion
-1. NCI Pine Script → `strategies/nci_strategy.py`
-2. `strategies/base.py` — PropFirmConstraints Wrapper
-3. `strategies/backtest.py` — Walk-Forward Engine
-4. Erster Walk-Forward Run: NCI gegen 30 Tage History
+1. ✅ `strategies/base.py` — PropFirmRules (Breakout + FundingPips 1-step),
+   RiskGuardrails (0.5% risk, 20% DD rule, Recovery Math),
+   Position Sizing (stop-loss as master), BacktestResult, Equity Curve Simulator
+2. ✅ `strategies/backtest.py` — vectorbt `Portfolio.from_signals()` +
+   Optuna `TPESampler` Walk-Forward Engine. `run_backtest()` +
+   `walk_forward_optimize()`. 46/46 evaluation checks pass.
+3. ✅ `scripts/evaluate.py` — Contract test for full backtesting stack
+4. ✅ 180 Tage Binance Spot Trade-Daten (629M Trades, 2 GB Parquet)
+5. ⏳ NCI Pine Script → `strategies/nci_strategy.py` (P3 pure function)
+6. ⏳ Erster Walk-Forward Run: NCI gegen 180 Tage History mit Layer-3 Features
 
 ### Sprint D — Optimizer + Hermes
 **Ziel:** Autonomer wöchentlicher Optimizer-Loop
-1. Optuna Integration für Parameter Sweep
-2. Walk-Forward PASS/FAIL Report
-3. Hermes auf Hetzner VPS aufsetzen
-4. Telegram Notification
-5. Wöchentlicher Automation Schedule
+1. ✅ Optuna Integration (in `strategies/backtest.py` — TPE Sampler, Study API)
+2. ⏳ Walk-Forward PASS/FAIL Report Generator
+3. ⏳ Hermes auf Hetzner VPS aufsetzen
+4. ⏳ Telegram Notification
+5. ⏳ Wöchentlicher Automation Schedule
 
 ### Sprint E — Co-Pilot
 **Ziel:** Live Trade Management Assistance
