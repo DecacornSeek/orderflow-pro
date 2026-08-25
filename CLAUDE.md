@@ -448,12 +448,27 @@ Abschnitte oberhalb beschrieben ab da Module, die es nicht mehr gab.
 - Liquidations-"Proxy" aus Hebelstufen entfernt — Charter §4.1 verlangt
   echte Cluster aus Perp-OI, die es noch nicht gibt
 
+### Zwei-Uhren-Zerlegung (Charter §4.2) — Messung steht, Anzeige fehlt
+OptionsAgent.compute_chain_shift() trennt mechanische von informativer
+Level-Bewegung: beide Ketten werden auf denselben Spot gerechnet, die
+verbleibende Differenz kann nicht vom Spot kommen. Ergebnis als ChainShift
+je Verfallsgruppe im Snapshot ("chain_shift"). tests/test_chain_shift.py
+haelt fest: reine Spot-Bewegung -> informativer Anteil exakt null; beide
+Anteile addieren sich zur Gesamtverschiebung.
+
+### Datenquelle: docs/CHAIN_SOURCE.md
+Primaerquelle ist Deribit direkt. Eine Ersatzquelle muss die *rohe Kette*
+liefern (OI je Strike + IV), niemals vorberechnetes GEX — sonst bricht die
+Zerlegung oben, die Halterseiten-Annahme waere die des Anbieters und der
+Gamma-Floor bei T->0 ebenfalls. Adapter bilden auf parse_chain() ab.
+
 ### Offen (Charter §4 und §6, noch nicht gebaut)
 - Impliziter Session-Korridor mit sqrt(Restzeit bis Reset) statt
   sqrt(Sessionlaenge) (§5)
 - Event-Layer: 08:00 UTC, Weekly, Monthly, Funding-Resets, Prop-Resets (§4.1)
 - Liquidationscluster aus Perp-OI (§4.1)
-- Trennung mechanisch vs. informativ in der Darstellung (§4.2)
+- Darstellung der Zwei-Uhren-Trennung im UI (§4.2) — gemessen wird sie,
+  risk.html zeigt sie noch nicht getrennt an
 - Hysterese auf den Regime-Zustand, Session-Open-Anker, Aenderungsliste (§6)
 - Endlicher Horizont in der Geometrie: p_timeout ist konstant 0 (§5)
 

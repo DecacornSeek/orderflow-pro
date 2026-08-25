@@ -124,6 +124,49 @@ class ExpiryReversalFlag:
 
 
 @dataclass(frozen=True)
+class ChainShift:
+    """
+    Zerlegung der Level-Bewegung einer Verfallsgruppe (Charter §4.2).
+
+    Die Level bewegen sich aus zwei verschiedenen Gruenden, und nur die
+    Unterscheidung macht den zweiten sichtbar:
+
+    - mechanisch: der Spot ist gelaufen, Gamma pro Strike rechnet sich neu,
+      Zero-Gamma verschiebt sich. Die Positionierung hat sich nicht geaendert,
+      nur der Standpunkt. Rauschen.
+    - informativ: der Spot steht, aber Zero-Gamma oder Walls wandern. Es wurde
+      Open Interest auf- oder abgebaut. Das ist das Signal.
+
+    Technisch getrennt durch Vergleich bei *festgehaltenem* Spot: die alte
+    Kette wird auf den aktuellen Spot nachgerechnet. Was dann noch an
+    Differenz zur neuen Kette bleibt, kann nicht vom Spot kommen.
+    """
+
+    label: str
+    spot_move: float                          # Spotbewegung seit letzter Kette
+    zero_gamma_mechanical: Optional[float]    # Verschiebung allein durch Spot
+    zero_gamma_informative: Optional[float]   # Verschiebung allein durch OI
+    net_gex_informative: float                # GEX-Aenderung bei festem Spot
+    oi_delta_btc: float                       # ATM-OI-Aenderung
+    put_wall_moved: bool
+    call_wall_moved: bool
+
+    @property
+    def is_informative(self) -> bool:
+        """
+        True, wenn sich bei festgehaltenem Spot ueberhaupt etwas bewegt hat.
+        Ohne Schwellwert — die Bewertung, ab wann eine Verschiebung
+        materiell ist, gehoert in die Anzeige, nicht in die Messung.
+        """
+        return (
+            (self.zero_gamma_informative is not None and self.zero_gamma_informative != 0.0)
+            or self.net_gex_informative != 0.0
+            or self.put_wall_moved
+            or self.call_wall_moved
+        )
+
+
+@dataclass(frozen=True)
 class OptionsSnapshot:
     """Strukturierter Gesamt-Snapshot der Deribit Optionskette."""
     ts: datetime              # UTC, Berechnungszeitpunkt
@@ -134,6 +177,7 @@ class OptionsSnapshot:
     skipped_instruments: int  # Anzahl uebersprungener/unparsbarer Instrumente
     reversal_flag: Optional[ExpiryReversalFlag] = None
     chain_age_seconds: float = 0.0  # Alter der zugrunde liegenden Kette in Sekunden
+    chain_shift: tuple[ChainShift, ...] = ()  # Zerlegung seit dem letzten Kettentakt
 
 
 # ── Parsing- und Rechenfunktionen ─────────────────────────────────────────────
@@ -271,6 +315,42 @@ def calculate_zero_gamma(strikes: List[StrikeGamma]) -> Optional[float]:
         return cum_values[-1][0]
     
     return None
+
+
+def parse_chain(
+    raw_chain: List[Dict[str, Any]],
+    fallback_spot: float
+) -> Tuple[Dict[datetime, List[Dict[str, Any]]], int]:
+    """
+    Zerlegt eine rohe Deribit-Kette nach Verfallsterminen.
+
+    Als freie Funktion, weil die Zwei-Uhren-Zerlegung (Charter §4.2) dieselbe
+    Operation auf der vorherigen und der aktuellen Kette braucht.
+
+    Rueckgabe: (parsed_by_expiry, uebersprungene Instrumente).
+    """
+    parsed_by_expiry: Dict[datetime, List[Dict[str, Any]]] = {}
+    skipped = 0
+
+    for item in raw_chain:
+        name = item.get("instrument_name")
+        parsed = parse_instrument_name(name)
+        if not parsed:
+            skipped += 1
+            continue
+
+        exp_dt, strike, opt_type = parsed
+        parsed_by_expiry.setdefault(exp_dt, []).append({
+            "instrument_name": name,
+            "strike": strike,
+            "type": opt_type,
+            "oi": float(item.get("open_interest") or 0.0),
+            # Deribit liefert mark_iv in Prozent (55.8), intern Dezimal (0.558)
+            "mark_iv": float(item.get("mark_iv") or 0.0) / 100.0,
+            "underlying_price": float(item.get("underlying_price") or fallback_spot),
+        })
+
+    return parsed_by_expiry, skipped
 
 
 def calculate_aggregates(
@@ -555,6 +635,11 @@ class OptionsAgent:
         self.history_mgr = history_manager or HistoryManager()
         
         self._raw_chain: List[Dict[str, Any]] = []
+        # Vorherige Kette + Spot beim letzten Kettentakt: Basis der
+        # Zwei-Uhren-Zerlegung (Charter §4.2).
+        self._prev_chain: List[Dict[str, Any]] = []
+        self._spot_at_chain: float = 0.0
+        self._last_shift: tuple = ()
         self._chain_ts: datetime = datetime.now(timezone.utc)
         # Kein Default-Spot: bis zum ersten Tick ist der Spot unbekannt, und ein
         # erfundener Spot wuerde eine vollstaendige, falsche Karte erzeugen.
@@ -606,33 +691,8 @@ class OptionsAgent:
             # Noch kein Spot-Tick empfangen. Ohne Spot ist kein Gamma rechenbar.
             _throttled_warn("no_spot", "Noch kein Spot-Tick empfangen — Options-Snapshot ausgesetzt.")
             return None
-        parsed_by_expiry: Dict[datetime, List[Dict[str, Any]]] = {}
-        total_skipped = 0
-        
         # 1. Kette parsen
-        for item in self._raw_chain:
-            name = item.get("instrument_name")
-            parsed = parse_instrument_name(name)
-            if not parsed:
-                total_skipped += 1
-                continue
-            
-            exp_dt, strike, opt_type = parsed
-            oi = float(item.get("open_interest") or 0.0)
-            mark_iv_pct = float(item.get("mark_iv") or 0.0)
-            mark_iv = mark_iv_pct / 100.0  # Prozent -> Dezimal (z.B. 55.8 -> 0.558)
-            
-            if exp_dt not in parsed_by_expiry:
-                parsed_by_expiry[exp_dt] = []
-            
-            parsed_by_expiry[exp_dt].append({
-                "instrument_name": name,
-                "strike": strike,
-                "type": opt_type,
-                "oi": oi,
-                "mark_iv": mark_iv,
-                "underlying_price": float(item.get("underlying_price") or spot)
-            })
+        parsed_by_expiry, total_skipped = parse_chain(self._raw_chain, spot)
         
         if not parsed_by_expiry:
             return None
@@ -662,9 +722,74 @@ class OptionsAgent:
             expiries=tuple(expiry_gammas),
             skipped_instruments=total_skipped,
             reversal_flag=flag,
-            chain_age_seconds=chain_age
+            chain_age_seconds=chain_age,
+            chain_shift=self._last_shift
         )
         return snapshot
+
+    def compute_chain_shift(self, now_utc: datetime) -> tuple:
+        """
+        Zerlegt die Level-Bewegung seit dem letzten Kettentakt (Charter §4.2).
+
+        Beide Ketten werden auf denselben, aktuellen Spot gerechnet. Was dann
+        an Differenz bleibt, kann nicht vom Spot stammen — das ist der
+        informative Anteil. Der mechanische Anteil ergibt sich aus derselben
+        (alten) Kette, einmal beim alten und einmal beim aktuellen Spot.
+
+        Ohne vorherige Kette gibt es nichts zu vergleichen: leere Zerlegung,
+        kein Ersatzwert.
+        """
+        if not self._prev_chain or not self._raw_chain:
+            return ()
+        spot_now = self._current_spot
+        spot_then = self._spot_at_chain
+        if spot_now <= 0.0 or spot_then <= 0.0:
+            return ()
+
+        prev_parsed, _ = parse_chain(self._prev_chain, spot_now)
+        curr_parsed, _ = parse_chain(self._raw_chain, spot_now)
+        if not prev_parsed or not curr_parsed:
+            return ()
+
+        prev_groups = resolve_expiry_groups(prev_parsed, now_utc)
+        curr_groups = resolve_expiry_groups(curr_parsed, now_utc)
+
+        shifts = []
+        for label, exp_dt in curr_groups.items():
+            prev_exp = prev_groups.get(label)
+            if prev_exp is None or prev_exp not in prev_parsed:
+                # Verfallsgruppe ist neu (z.B. 0DTE nach dem Rollover) —
+                # es gibt keinen Vorzustand, mit dem sich vergleichen liesse.
+                continue
+
+            prev_instruments = prev_parsed[prev_exp]
+            curr_instruments = curr_parsed[exp_dt]
+
+            # Alte Kette, alter Spot -> Ausgangszustand
+            eg_then, _ = calculate_aggregates(
+                prev_exp, label, prev_instruments, spot_then, now_utc)
+            # Alte Kette, aktueller Spot -> rein mechanisch verschoben
+            eg_mech, _ = calculate_aggregates(
+                prev_exp, label, prev_instruments, spot_now, now_utc)
+            # Neue Kette, aktueller Spot -> zusaetzlich informativ verschoben
+            eg_now, _ = calculate_aggregates(
+                exp_dt, label, curr_instruments, spot_now, now_utc)
+
+            def _delta(a: Optional[float], b: Optional[float]) -> Optional[float]:
+                return None if (a is None or b is None) else a - b
+
+            shifts.append(ChainShift(
+                label=label,
+                spot_move=spot_now - spot_then,
+                zero_gamma_mechanical=_delta(eg_mech.zero_gamma, eg_then.zero_gamma),
+                zero_gamma_informative=_delta(eg_now.zero_gamma, eg_mech.zero_gamma),
+                net_gex_informative=eg_now.net_gex - eg_mech.net_gex,
+                oi_delta_btc=eg_now.atm_oi - eg_mech.atm_oi,
+                put_wall_moved=eg_now.put_wall != eg_mech.put_wall,
+                call_wall_moved=eg_now.call_wall != eg_mech.call_wall,
+            ))
+
+        return tuple(shifts)
 
     async def fetch_and_update(self) -> Optional[OptionsSnapshot]:
         """
@@ -679,7 +804,18 @@ class OptionsAgent:
                     _throttled_warn("empty_chain", "Deribit Rueckgabe war leer, Snapshot wird als stale markiert.")
                     self._stale = True
                 else:
+                    # Erst zerlegen, dann ersetzen: die Zerlegung braucht beide
+                    # Ketten am selben Spot (Charter §4.2).
+                    self._prev_chain = self._raw_chain
                     self._raw_chain = raw_items
+                    try:
+                        self._last_shift = self.compute_chain_shift(now_utc)
+                    except Exception as exc:
+                        # Die Zerlegung ist Zusatzinformation — faellt sie aus,
+                        # bleibt der Snapshot gueltig, nur ohne Zerlegung.
+                        _throttled_warn("shift_fail", f"Kettenzerlegung fehlgeschlagen: {exc}")
+                        self._last_shift = ()
+                    self._spot_at_chain = self._current_spot
                     self._chain_ts = now_utc
                     self._stale = False
             except Exception as exc:
@@ -825,4 +961,20 @@ def snapshot_to_dict(snap: OptionsSnapshot) -> Dict[str, Any]:
         # Nicht gerechnet: Max Pain steht nicht in Charter §4.1 und wuerde ohne
         # Payoff-Aggregation ueber die ganze Kette nur geschaetzt werden.
         "max_pain": None,
+        # Charter §4.2: mechanisch und informativ getrennt ausweisen, damit die
+        # Anzeige sie nicht gleich darstellen kann.
+        "chain_shift": [
+            {
+                "label": sh.label,
+                "spot_move": round(sh.spot_move, 2),
+                "zero_gamma_mechanical": sh.zero_gamma_mechanical,
+                "zero_gamma_informative": sh.zero_gamma_informative,
+                "net_gex_informative": sh.net_gex_informative,
+                "oi_delta_btc": round(sh.oi_delta_btc, 4),
+                "put_wall_moved": sh.put_wall_moved,
+                "call_wall_moved": sh.call_wall_moved,
+                "is_informative": sh.is_informative,
+            }
+            for sh in snap.chain_shift
+        ],
     }
