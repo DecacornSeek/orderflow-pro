@@ -18,14 +18,14 @@ from core.history import History
 import core.metrics as _metrics
 from core.regime_state import ChangeLog, RegimeTracker, SessionAnchor
 from core.session_corridor import build_corridor, corridor_to_dict, target_position
-from strategies.base import (
+from risk.base import (
     PROP_FIRM_PRESETS,
     RiskGuardrails,
     rules_to_dict,
     simulate_challenge,
     size_position,
 )
-from strategies.geometry import evaluate_geometry, realised_vol_annualised
+from risk.geometry import evaluate_geometry, realised_vol_annualised
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")

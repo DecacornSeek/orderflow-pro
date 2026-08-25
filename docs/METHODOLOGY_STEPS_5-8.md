@@ -15,8 +15,9 @@ Layer 3  INTERPRETATION     shapes, single prints, zones,    (core/profile_shape
          (this document)    weak/strong extremes, road map    core/profile_structure,
                                                               core/business_zones,
                                                               core/road_map)
-Layer 4  STRATEGY           pure functions over features     (strategies/, Sprint C)
-Layer 5  VALIDATION         walk-forward backtest, PASS/FAIL (Sprint D)
+Layer 4  STRATEGY           entfaellt — das System beschreibt Zustand,
+                            es entwickelt keine Strategien (Charter §2)
+Layer 5  VALIDATION         entfaellt mit Layer 4
 ```
 
 **Design rule for every module in Layer 3:** pure functions over profile data
@@ -81,7 +82,7 @@ Only after steps 5–7 do we look for a setup — the proof the idea is working.
 ## Feature contract (what the Strategy Engine consumes)
 
 Every Layer-3 module contributes flat, deterministic fields that can be
-joined into the feature DataFrame (P3: strategies are pure functions):
+joined into the feature DataFrame (P3: reine Funktionen ueber Profildaten):
 
 ```
 profile_structure:  n_single_prints, high_strength, low_strength,

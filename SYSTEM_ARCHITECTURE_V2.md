@@ -1,4 +1,16 @@
 # OrderFlow Pro — System Architecture
+
+> **Teilweise ueberholt (Stand 2026-08-25).**
+> Die Ausrichtung auf Strategie-Engine, Walk-Forward-Optimizer und
+> Signalgenerierung ist aufgegeben — das Projekt ist ein deskriptives
+> Informationssystem neben TradingView. Aktuell ist `CLAUDE.md`, verbindlich
+> ist der Charter.
+>
+> Weiterhin gueltig und noch nicht gebaut sind die Kontext-Features in
+> Abschnitt 3: Funding-Rate + Open Interest, CME-Gap, Coinbase Premium Index.
+> Richtungs-Interpretationen dort ("bullish" / "bearish") gelten nicht mehr —
+> das System vergibt keine Richtungslabels.
+
 **Version:** 2.0 | **Perspective:** System Engineer
 **Scope:** BTC/USDT Perps, Intraday 1min–4H, Discretionary + Autonomous Optimization
 

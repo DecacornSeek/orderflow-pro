@@ -77,10 +77,9 @@ core/
   volume_profile.py         VAP/POC/Value Area (Basis für Session + Weekly)
   business_zones.py         Zone Registry, road_map.py, profile_structure.py
   orderbook.py, cvd.py, divergence.py, absorption.py, lethargy.py, ...
-strategies/
+risk/                       kein Strategie-Paket: Risikomanagement
   geometry.py               Barrier-Mathematik (GBM First-Passage)
   base.py                   PropFirmRules, Sizing, Challenge-Simulation
-  backtest.py               vectorbt + Optuna (optional, siehe unten)
 static/
   index.html                Live-Terminal
   risk.html                 Pre-Session-Karte + Risikoblatt
@@ -100,26 +99,27 @@ pytest                                    # 381 Tests
 python scripts/verify_pr4a_contract.py    # Payload-Vertrag
 python scripts/verify_pr4a_isolation.py   # Fehlerisolation je Modul
 python scripts/verify_pr4a_perf.py        # Durchsatz + Publish-Latenz
+python scripts/gex_scaling_probe.py       # GEX-Konventionen gegenueberstellen
 ```
 
 `tests/test_sprint1.py` ist ausgenommen — es spricht beim Sammeln die
 Live-Binance-API an. Explizit anfordern mit `pytest tests/test_sprint1.py`.
 
-## Backtesting (optional)
+## Kein Strategie-Labor
 
-`strategies/backtest.py` braucht zusätzliche Pakete, die nicht Teil des
-Live-Betriebs sind:
+Das System entwickelt und testet keine Strategien. Der Backtest-Stack
+(vectorbt + Optuna), der Signal Agent und die Trainings-Feature-Pipeline sind
+am 2026-08-25 entfernt worden — siehe `CLAUDE.md`, Abschnitt
+"Aenderungshistorie der Ausrichtung".
 
-```bash
-pip install vectorbt optuna
-python scripts/evaluate.py
-```
+Was unter `risk/` bleibt, ist Risikomanagement: harte Prop-Grenzen, Position
+Sizing und die Barrier-Mathematik für eine Geometrie, die **der Trader**
+setzt.
 
 ## Historische Daten
 
 ```bash
-python scripts/download_history.py --days 30   # ~107M Trades
-python scripts/replay_history.py               # -> data/training_features.parquet
+python scripts/download_history.py --days 30   # ~107M Trades, für Profil-Baselines
 ```
 
 ## Offen
