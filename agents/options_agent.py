@@ -46,7 +46,10 @@ SECONDS_PER_YEAR = 31_536_000.0  # 365 * 86400
 MAX_CHAIN_AGE_SECONDS = 600.0
 
 # Persistenzpfad fuer historisches 07:00 UTC ATM-OI (Top-Dezil-Klassifikation)
-DATA_DIR = Path("data")
+# Repo-relativ, nicht relativ zum Arbeitsverzeichnis: die ATM-OI-Historie
+# braucht 60 Tage, bis das Dezil ueberhaupt bestimmbar ist. Startet der
+# Prozess einmal aus einem anderen Ordner, faengt sie sonst von vorn an.
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 ATM_OI_HISTORY_FILE = DATA_DIR / "options_atm_oi_history.json"
 MIN_HISTORY_FOR_EXPIRY_DECILE = 60
 

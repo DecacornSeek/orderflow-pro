@@ -148,3 +148,64 @@ def test_ereignisse_bleiben_ueber_die_tagesgrenze_konsistent():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+# ── Windows ohne tzdata (Startfehler, der den ganzen Prozess mitriss) ─────────
+
+def test_import_ueberlebt_fehlende_zeitzonendatenbank(monkeypatch):
+    """
+    Windows bringt keine Zeitzonendatenbank mit. Frueher stand
+    ZoneInfo("America/New_York") auf Modulebene — der Import warf dort und
+    riss agents.display_agent und damit main.py mit.
+    """
+    import importlib
+    import zoneinfo
+
+    import core.event_layer as el
+
+    def kaputt(_key):
+        raise zoneinfo.ZoneInfoNotFoundError("No time zone found")
+
+    monkeypatch.setattr(el, "ZoneInfo", kaputt)
+    monkeypatch.setattr(el, "_ny_zone", None)
+    monkeypatch.setattr(el, "_ny_is_fallback", False)
+
+    # Darf nicht werfen
+    assert el.timezone_source() == "fallback_utc_minus_5"
+
+    reset = el.next_fundingpips_reset(_utc(2026, 8, 25, 9))
+    assert reset.hour == 22          # festes UTC-5 statt Sommerzeit-21:00
+    assert reset > _utc(2026, 8, 25, 9)
+
+    importlib.reload(el)             # Modulzustand fuer andere Tests zuruecksetzen
+
+
+def test_rueckfall_wird_im_hinweis_benannt(monkeypatch):
+    """
+    Der Rueckfall liegt waehrend der Sommerzeit eine Stunde daneben. Das
+    gehoert an den Termin geschrieben, nicht verschwiegen (Charter §7).
+    """
+    import importlib
+    import zoneinfo
+
+    import core.event_layer as el
+
+    monkeypatch.setattr(el, "ZoneInfo", lambda _k: (_ for _ in ()).throw(
+        zoneinfo.ZoneInfoNotFoundError("No time zone found")))
+    monkeypatch.setattr(el, "_ny_zone", None)
+    monkeypatch.setattr(el, "_ny_is_fallback", False)
+
+    events = el.build_events(_utc(2026, 8, 25, 9, 15))
+    fp = next(e for e in events if e.label == "FundingPips Daily Reset")
+    assert "tzdata" in fp.note
+    assert "UTC-5" in fp.note
+
+    importlib.reload(el)
+
+
+def test_mit_zeitzonendatenbank_wird_kein_rueckfall_gemeldet():
+    import core.event_layer as el
+    assert el.timezone_source() == "iana"
+    fp = next(e for e in el.build_events(_utc(2026, 8, 25, 9, 15))
+              if e.label == "FundingPips Daily Reset")
+    assert "tzdata" not in fp.note

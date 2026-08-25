@@ -10,6 +10,8 @@ dependencies = [
     "pandas",
     "pyarrow",
     "requests",
+    # Windows bringt keine Zeitzonendatenbank mit
+    'tzdata; platform_system == "Windows"',
 ]
 
 [tool.ruff]

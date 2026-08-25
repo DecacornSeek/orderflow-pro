@@ -15,11 +15,48 @@ bestaetigte Veroeffentlichung.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, time as dtime, timedelta, timezone
+from datetime import datetime, time as dtime, timedelta, timezone, tzinfo
+import logging
 from typing import List, Optional
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-NEW_YORK = ZoneInfo("America/New_York")
+logger = logging.getLogger(__name__)
+
+# Windows liefert keine System-Zeitzonendatenbank. Ohne das Paket tzdata wirft
+# ZoneInfo dort ZoneInfoNotFoundError — auf Modulebene haette das den Import
+# dieses Moduls und damit den ganzen Start mitgerissen.
+#
+# Der Rueckfall ist fester UTC-5, also EST ohne Sommerzeit. Das entspricht dem
+# Wortlaut der Prop-Regel ("17:00 EST"), ist aber von Maerz bis November eine
+# Stunde daneben. Deshalb wird er nicht verschwiegen: timezone_source() meldet
+# ihn, und der Ereignishinweis schreibt ihn dazu.
+_NY_FALLBACK = timezone(timedelta(hours=-5), "EST")
+_ny_zone: Optional[tzinfo] = None
+_ny_is_fallback = False
+
+
+def new_york_zone() -> tzinfo:
+    """Zeitzone New York; faellt auf festes UTC-5 zurueck, wenn tzdata fehlt."""
+    global _ny_zone, _ny_is_fallback
+    if _ny_zone is None:
+        try:
+            _ny_zone = ZoneInfo("America/New_York")
+            _ny_is_fallback = False
+        except (ZoneInfoNotFoundError, KeyError, OSError) as exc:
+            _ny_zone = _NY_FALLBACK
+            _ny_is_fallback = True
+            logger.warning(
+                "Zeitzonendatenbank nicht verfuegbar (%s). Der FundingPips-Reset "
+                "rechnet mit festem UTC-5 und liegt waehrend der Sommerzeit eine "
+                "Stunde daneben. Behebung: pip install tzdata", exc
+            )
+    return _ny_zone
+
+
+def timezone_source() -> str:
+    """'iana' bei echter Zeitzonendatenbank, sonst 'fallback_utc_minus_5'."""
+    new_york_zone()
+    return "fallback_utc_minus_5" if _ny_is_fallback else "iana"
 
 # Kategorien — die Karte faerbt danach, nicht nach Wichtigkeit
 KIND_EXPIRY = "expiry"
@@ -100,7 +137,7 @@ def next_fundingpips_reset(now: datetime) -> datetime:
     tatsaechlich fixes UTC-5 ganzjaehrig meinen, gehoert hier eine feste
     Zeitzone hin.
     """
-    local_now = now.astimezone(NEW_YORK)
+    local_now = now.astimezone(new_york_zone())
     candidate = local_now.replace(
         hour=FUNDINGPIPS_RESET_LOCAL.hour,
         minute=FUNDINGPIPS_RESET_LOCAL.minute,
@@ -162,9 +199,11 @@ def build_events(now_utc: Optional[datetime] = None, horizon_hours: float = 48.0
         _next_daily(now_utc, BREAKOUT_RESET_UTC.hour, BREAKOUT_RESET_UTC.minute),
         "Daily-Loss-Limit setzt zurueck. Hartes Limit, kein weicher Stop.")
 
-    add(KIND_PROP, "FundingPips Daily Reset",
-        next_fundingpips_reset(now_utc),
-        "17:00 Ortszeit New York; folgt der Sommerzeit.")
+    fp_note = "17:00 Ortszeit New York; folgt der Sommerzeit."
+    if timezone_source() != "iana":
+        fp_note = ("17:00 EST bei festem UTC-5 — Zeitzonendatenbank fehlt "
+                   "(pip install tzdata), waehrend der Sommerzeit eine Stunde daneben.")
+    add(KIND_PROP, "FundingPips Daily Reset", next_fundingpips_reset(now_utc), fp_note)
 
     return sorted(candidates, key=lambda e: e.seconds_until)
 

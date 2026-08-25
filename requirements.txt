@@ -5,3 +5,6 @@ rich
 pandas
 pyarrow
 requests
+# Windows bringt keine Zeitzonendatenbank mit; ohne tzdata faellt der
+# Event-Layer auf festes UTC-5 zurueck (siehe core/event_layer.py).
+tzdata; platform_system == "Windows"
