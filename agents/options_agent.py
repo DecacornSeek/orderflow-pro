@@ -95,7 +95,9 @@ class ExpiryGamma:
     put_wall: Optional[float]    # Strike mit maximalem Put-OI unterhalb Spot
     call_wall: Optional[float]   # Strike mit maximalem Call-OI oberhalb Spot
     atm_oi: float             # Summe Call+Put OI innerhalb +/-2.5% um Spot (in BTC)
-    expected_move: float      # S * iv_atm * sqrt(T_years)
+    expected_move: float      # S * iv_atm * sqrt(T_years) (1-Sigma)
+    expected_move_2sigma: float = 0.0 # 2 * S * iv_atm * sqrt(T_years)
+    skew_25d: float = 0.0     # 25-Delta Skew (IV_25d_Call - IV_25d_Put) in Vol-Punkten
 
 
 @dataclass(frozen=True)
@@ -348,9 +350,23 @@ def calculate_aggregates(
     # Call Wall: Maximum Call OI oberhalb Spot
     call_wall = max(call_oi_above.items(), key=lambda x: x[1])[0] if call_oi_above else None
     
-    # Expected Move: S * iv_atm * sqrt(T_years)
+    # Expected Move: 1-Sigma and 2-Sigma session projection
     expected_move = spot * iv_atm * math.sqrt(t_years)
-    
+    expected_move_2sigma = 2.0 * expected_move
+
+    # 25-Delta Skew Calculation:
+    # 25d Call strike is approximately spot * exp(+0.6745 * iv_atm * sqrt(t_years))
+    # 25d Put strike is approximately spot * exp(-0.6745 * iv_atm * sqrt(t_years))
+    target_25d_call_k = spot * math.exp(0.6745 * iv_atm * math.sqrt(t_years))
+    target_25d_put_k = spot * math.exp(-0.6745 * iv_atm * math.sqrt(t_years))
+
+    calls = [s for s in strikes_list if s.option_type == "C"]
+    puts = [s for s in strikes_list if s.option_type == "P"]
+
+    iv_25d_call = min(calls, key=lambda s: abs(s.strike - target_25d_call_k)).mark_iv if calls else iv_atm
+    iv_25d_put = min(puts, key=lambda s: abs(s.strike - target_25d_put_k)).mark_iv if puts else iv_atm
+    skew_25d = iv_25d_call - iv_25d_put  # Positive -> Call premium / bullish drift, Negative -> Put premium / hedging demand
+
     expiry_gamma = ExpiryGamma(
         expiry=expiry_dt,
         label=label,
@@ -361,7 +377,9 @@ def calculate_aggregates(
         put_wall=put_wall,
         call_wall=call_wall,
         atm_oi=float(atm_oi_btc),
-        expected_move=float(expected_move)
+        expected_move=float(expected_move),
+        expected_move_2sigma=float(expected_move_2sigma),
+        skew_25d=float(skew_25d)
     )
     
     return expiry_gamma, skipped

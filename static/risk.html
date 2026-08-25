@@ -392,6 +392,263 @@
   .flag.danger { border-left-color: var(--red); }
   .flag.success { border-left-color: var(--green); }
 
+  /* ── Pre-Session Briefing Card ("Die Karte") ────────────────────────────── */
+  .briefing-card {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .briefing-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 10px;
+  }
+  .briefing-title {
+    font-family: var(--cond);
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--ink);
+  }
+  .briefing-subtitle {
+    font-size: 11px;
+    color: var(--ink2);
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+  
+  /* Anchor Bar */
+  .anchor-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    background: #EEF2F4;
+    border: 1px solid var(--rule2);
+    padding: 6px 10px;
+    margin-bottom: 10px;
+    font-size: 11px;
+    gap: 8px;
+  }
+  .anchor-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+  .anchor-tag {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 2px 6px;
+    background: #fff;
+    border: 1px solid var(--rule);
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .drift-badge {
+    font-family: var(--cond);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    letter-spacing: .04em;
+  }
+  .drift-info-badge { background: rgba(168, 119, 34, 0.15); color: var(--amber); border: 1px solid rgba(168, 119, 34, 0.35); }
+  .drift-mech-badge { background: rgba(84, 102, 111, 0.12); color: var(--ink2); border: 1px solid var(--rule); }
+  .drift-stable-badge { background: rgba(27, 96, 70, 0.12); color: var(--green); border: 1px solid rgba(27, 96, 70, 0.3); }
+
+  .anchor-btn {
+    font-family: var(--cond);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid var(--rule);
+    padding: 3px 8px;
+    cursor: pointer;
+  }
+  .anchor-btn:hover {
+    background: var(--ink);
+    color: #fff;
+    border-color: var(--ink);
+  }
+
+  /* Briefing Table */
+  .briefing-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 10px;
+  }
+  .briefing-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    text-align: left;
+  }
+  .briefing-table th {
+    font-family: var(--cond);
+    font-size: 9.5px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink2);
+    background: #EEF2F4;
+    padding: 6px 8px;
+    border: 1px solid var(--rule2);
+    font-weight: 600;
+  }
+  .briefing-table td {
+    padding: 6px 8px;
+    border: 1px solid var(--rule2);
+    vertical-align: middle;
+    line-height: 1.35;
+  }
+  .briefing-table tr:hover td {
+    background: #F4F7F8;
+  }
+  .briefing-field {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .briefing-val {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .briefing-delta {
+    font-family: var(--mono);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .briefing-src {
+    font-size: 10px;
+    color: var(--ink2);
+    font-family: var(--mono);
+  }
+  .briefing-not {
+    font-size: 10px;
+    color: #5A6D78;
+    background: rgba(84, 102, 111, 0.04);
+    padding: 3px 6px;
+    border-left: 2px solid var(--rule);
+  }
+
+  /* ── Event Layer Grid ───────────────────────────────────────────────────── */
+  .event-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+  }
+  @media(max-width: 960px) { .event-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media(max-width: 580px) { .event-grid { grid-template-columns: 1fr; } }
+  
+  .event-card {
+    background: #EEF2F4;
+    border: 1px solid var(--rule2);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .event-card-head {
+    font-family: var(--cond);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--ink);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .event-countdown {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--ink);
+    margin: 2px 0;
+  }
+  .event-detail {
+    font-size: 10px;
+    color: var(--ink2);
+    line-height: 1.35;
+    margin-top: 2px;
+  }
+  .event-badge {
+    font-size: 8.5px;
+    font-family: var(--cond);
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 1px 4px;
+    border: 1px solid var(--rule);
+    background: #fff;
+  }
+
+  /* ── Änderungsliste (Material Change Feed) ──────────────────────────────── */
+  .change-feed-box {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #F7F9FA;
+    border: 1px solid var(--rule2);
+  }
+  .change-feed-head {
+    font-family: var(--cond);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--ink);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .change-feed-list {
+    max-height: 95px;
+    overflow-y: auto;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .change-feed-item {
+    padding: 3px 0;
+    border-bottom: 1px dashed var(--rule2);
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+  }
+  .change-feed-item:last-child { border-bottom: none; }
+  .change-feed-time {
+    font-family: var(--mono);
+    color: var(--ink2);
+    font-size: 9px;
+    white-space: nowrap;
+  }
+  .change-feed-tag {
+    font-family: var(--mono);
+    font-size: 8px;
+    font-weight: 700;
+    padding: 1px 4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .tag-info-build { background: rgba(168, 119, 34, 0.15); color: var(--amber); }
+  .tag-regime-flip { background: rgba(158, 43, 20, 0.15); color: var(--red); }
+  .tag-mech-drift { background: rgba(84, 102, 111, 0.12); color: var(--ink2); }
+
   /* Context Templates Section */
   .tpl-grid {
     display: grid;
@@ -755,7 +1012,161 @@
   <div><div class="l">Zero Gamma Level</div><div class="n" id="mZeroG">—</div></div>
   <div><div class="l">Put / Call Wall</div><div class="n" id="mWalls">—</div></div>
   <div><div class="l">ATM IV · 24h RV</div><div class="n" id="mIvRv">—</div></div>
-  <div><div class="l">Expected Move (0DTE / 7D)</div><div class="n" id="mExpMove">—</div></div>
+  <div><div class="l">25Δ Skew (Call−Put)</div><div class="n" id="mSkew25d">—</div></div>
+  <div><div class="l">Exp. Move (1σ / 2σ Decayed)</div><div class="n" id="mExpMove">—</div></div>
+</div>
+
+<!-- Pre-Session Briefing Card ("Die Karte") -->
+<div class="briefing-card">
+  <div class="briefing-header">
+    <div>
+      <div class="briefing-title">Pre-Session Briefing-Karte · Dealer-Positionierung &amp; Implizite Range</div>
+      <div class="briefing-subtitle">
+        <strong>Strikter Scope:</strong> Liefert nur die Level und Positionierungsdaten, die in deinem klassischen Chart nicht stehen (Dealer-Hedging, Volatilitätskorridore mit Restzeit-Decay, Event-Resets).
+      </div>
+    </div>
+    <div style="text-align: right;">
+      <span class="anchor-tag" id="briefingUtcClock">UTC --:--:--</span>
+    </div>
+  </div>
+
+  <!-- Session Open Anchor Strip -->
+  <div class="anchor-bar">
+    <div class="anchor-info">
+      <span><strong>Session-Anker:</strong> <span id="ancTime" style="font-family:var(--mono);">—</span></span>
+      <span>Spot: <strong id="ancSpot" style="font-family:var(--mono);">$—</strong></span>
+      <span>Zero-Γ: <strong id="ancZeroG" style="font-family:var(--mono);">$—</strong></span>
+      <span>ATM IV: <strong id="ancIv" style="font-family:var(--mono);">—%</strong></span>
+      <span>Walls: <strong id="ancWalls" style="font-family:var(--mono);">—</strong></span>
+      <span>Drift-Natur: <span class="drift-badge drift-stable-badge" id="ancDriftNature">STABIL</span></span>
+    </div>
+    <button class="anchor-btn" onclick="resetSessionAnchor()" title="Fixiert den Referenzanker auf den aktuellen Stand">⚓ Session-Open Anker neu fixieren</button>
+  </div>
+
+  <!-- The Core Briefing Table ("Die Karte") -->
+  <div class="briefing-table-wrap">
+    <table class="briefing-table">
+      <thead>
+        <tr>
+          <th style="width:17%;">Feld</th>
+          <th style="width:20%;">Zahl / Wert</th>
+          <th style="width:14%;">Δ Session-Anker</th>
+          <th style="width:15%;">Quelle</th>
+          <th style="width:34%;">Was es <em>nicht</em> sagt</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="briefing-field">Session-Korridor 1σ</td>
+          <td class="briefing-val" id="bk_corr_1s">±$— (<span id="bk_corr_1s_pct">—%</span>)</td>
+          <td class="briefing-delta" id="bk_corr_delta">Restzeit: <span id="bk_t_rest">—h</span></td>
+          <td class="briefing-src">S × ATM IV × √(t_rest/365)</td>
+          <td class="briefing-not"><strong>Keine Touch-Grenze.</strong> 68% ist Terminal-Containment; die Berührungswahrscheinlichkeit des einzelnen 1σ-Bands liegt bei ~32%.</td>
+        </tr>
+        <tr>
+          <td class="briefing-field">Gamma-Flip (Zero-Γ)</td>
+          <td class="briefing-val" id="bk_zero_g">$—</td>
+          <td class="briefing-delta" id="bk_zero_g_delta">—</td>
+          <td class="briefing-src"><code>options_agent</code> (invers S³/S²)</td>
+          <td class="briefing-not"><strong>Kein Support/Resistance.</strong> Nur der Punkt, an dem Market-Maker-Hedging das Vorzeichen wechselt.</td>
+        </tr>
+        <tr>
+          <td class="briefing-field">Call- / Put-Wall</td>
+          <td class="briefing-val" id="bk_walls">Put: $— · Call: $—</td>
+          <td class="briefing-delta" id="bk_walls_delta">—</td>
+          <td class="briefing-src">Deribit Options Chain (GEX Peak)</td>
+          <td class="briefing-not"><strong>Wo Hedging klebt</strong> (Pinning), nicht wo der Preis deterministisch dreht.</td>
+        </tr>
+        <tr>
+          <td class="briefing-field">Regime</td>
+          <td class="briefing-val" id="bk_regime"><span class="pos">Long Γ (Dampening)</span></td>
+          <td class="briefing-delta" id="bk_hysteresis">Hysterese: ±$—</td>
+          <td class="briefing-src">Spot vs. Flip (Hysterese-Filter)</td>
+          <td class="briefing-not"><strong>Keine Richtung.</strong> Kennzeichnet nur Volatilitätsregime (Pinning / Mean-Reversion vs. Accelerant / Trend-Expansion).</td>
+        </tr>
+        <tr>
+          <td class="briefing-field">RV vs. IV</td>
+          <td class="briefing-val" id="bk_iv_rv">—% RV · —% IV (Ratio —)</td>
+          <td class="briefing-delta" id="bk_iv_delta">Δ IV: —</td>
+          <td class="briefing-src">24h Realised vs. ATM Mark IV</td>
+          <td class="briefing-not">Kein Timing-Signal; zeigt an, ob der Markt Volatilität relativ zur realisierten Bewegung teuer oder billig preist.</td>
+        </tr>
+        <tr>
+          <td class="briefing-field">25Δ Skew (Call−Put)</td>
+          <td class="briefing-val" id="bk_skew">—</td>
+          <td class="briefing-delta" id="bk_skew_note">—</td>
+          <td class="briefing-src">25-Delta Smile Deribit</td>
+          <td class="briefing-not">Misst Tail-Risk-Prämien und asymmetrische Nachfrage nach OTM-Absicherung (Call- vs. Put-Überhang).</td>
+        </tr>
+        <tr>
+          <td class="briefing-field">Liq-Cluster</td>
+          <td class="briefing-val" id="bk_liq">—</td>
+          <td class="briefing-delta">25x / 50x / 100x Pools</td>
+          <td class="briefing-src">Perp-OI, Leverage-Verteilung</td>
+          <td class="briefing-not">Kein fester Wendepunkt – Zonen akkumulierter Zwangsliquidierungs-Orders bei Stop-Runs.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Event Layer (Deterministic Event Grid) -->
+  <div class="event-grid">
+    <div class="event-card">
+      <div class="event-card-head">
+        <span>08:00 UTC Deribit Daily</span>
+        <span class="event-badge" id="ev_deribit_badge">Settlement</span>
+      </div>
+      <div class="event-countdown" id="ev_deribit_count">--:--:--</div>
+      <div class="event-detail" id="ev_deribit_det">ATM-OI Dezil &amp; Net-Gamma Check</div>
+    </div>
+
+    <div class="event-card">
+      <div class="event-card-head">
+        <span>Weekly / Monthly Expiry</span>
+        <span class="event-badge">Freitag 08:00 UTC</span>
+      </div>
+      <div class="event-countdown" id="ev_weekly_count">--:--:--</div>
+      <div class="event-detail">Deutlich größeres Open Interest; Gamma-Walls hier signifikant belastbarer.</div>
+    </div>
+
+    <div class="event-card">
+      <div class="event-card-head">
+        <span>Funding-Reset (8h)</span>
+        <span class="event-badge">00 / 08 / 16 UTC</span>
+      </div>
+      <div class="event-countdown" id="ev_funding_count">--:--:--</div>
+      <div class="event-detail">Perp Funding Settlement Fenster &amp; Positionierungs-Rebalancing.</div>
+    </div>
+
+    <div class="event-card">
+      <div class="event-card-head">
+        <span>Prop-Risk Resets</span>
+        <span class="event-badge">Täglich</span>
+      </div>
+      <div class="event-countdown" id="ev_prop_count">--:--:--</div>
+      <div class="event-detail">Breakout: <strong>00:30 UTC</strong> · FundingPips: <strong>17:00 EST (21:00 UTC)</strong></div>
+    </div>
+  </div>
+
+  <!-- Änderungsliste (Material Change Feed) -->
+  <div class="change-feed-box">
+    <div class="change-feed-head">
+      <span>Änderungsliste (Materielle Shifts · Keine Jitter-Animation)</span>
+      <small style="font-weight:normal; text-transform:none; color:var(--ink2);">Nur signifikante Verlagerungen von Zero-Γ (&gt;$250), Walls, IV (&gt;1.0%) oder Regime</small>
+    </div>
+    <div class="change-feed-list" id="changeFeedList">
+      <div class="change-feed-item">
+        <span class="change-feed-time">--:--:-- UTC</span>
+        <span class="change-feed-tag tag-mech-drift">SESSION START</span>
+        <span>Initialisiere Optionen- &amp; Kontextüberwachung...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Structural Caveat on BTC GEX -->
+  <div style="margin-top: 8px; font-size: 10px; color: var(--ink2); line-height: 1.45; background: rgba(84, 102, 111, 0.04); padding: 6px 8px; border-left: 2px solid var(--amber);">
+    <strong>Struktur-Besonderheit bei BTC-Optionen:</strong> Bei BTC steht Covered-Call-Writing von Minern und Treasury-Adressen (Dealer sind Long Calls) gegen starkes Retail-Call-Buying (Dealer sind Short Calls). Das Gamma-Vorzeichen ist empirisch weniger trennscharf als im SPX. Nimm den Gamma-Flip als Orientierungsmarke im Kontext, nicht als mechanischen Schalter.
+  </div>
 </div>
 
 <!-- Main 2-Column Grid -->
@@ -864,8 +1275,19 @@
         </div>
 
         <div class="ctl">
-          <div class="ctlhead"><label for="i_target">Profit Target (Target)</label><span class="val pos" id="v_target">—</span></div>
+          <div class="ctlhead"><label for="i_target">Profit Target 1 (Tranche 1 · 1σ)</label><span class="val pos" id="v_target">—</span></div>
           <input type="range" id="i_target" min="40000" max="150000" step="25" value="65900">
+        </div>
+
+        <div class="ctl" style="margin-top: 6px;">
+          <div class="ctlhead" style="display:flex; justify-content:space-between; align-items:center;">
+            <label for="i_target2">Profit Target 2 (Tranche 2 · 2σ Scale-Out)</label>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <label style="font-size:9.5px; color:var(--ink2); cursor:pointer;"><input type="checkbox" id="chk_target2" checked style="vertical-align:middle;"> Enable T2</label>
+              <span class="val pos" id="v_target2">—</span>
+            </div>
+          </div>
+          <input type="range" id="i_target2" min="40000" max="150000" step="25" value="67300">
         </div>
 
         <div class="ctl" style="margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--rule2);">
@@ -911,8 +1333,16 @@
           <span class="v neg" id="g_stop_dist">—</span>
         </div>
         <div class="row">
-          <span class="k">Target Distance</span>
+          <span class="k">Target Distance (T1)</span>
           <span class="v pos" id="g_target_dist">—</span>
+        </div>
+        <div class="row" id="row_scale_out_t2" style="display:none; background:rgba(27,96,70,0.06); padding: 4px 6px;">
+          <span class="k">Scale-Out T2 (50% @ BE Stop)</span>
+          <span class="v pos" id="g_scale_out_t2">—</span>
+        </div>
+        <div class="row" id="row_scale_out_p" style="display:none; background:rgba(27,96,70,0.06); padding: 4px 6px;">
+          <span class="k">P(T2 | T1) · Full Win Prob</span>
+          <span class="v" id="g_scale_out_p">—</span>
         </div>
         <div class="row">
           <span class="k">Expectancy (Driftless = −Cost R)</span>
@@ -1249,6 +1679,8 @@ const usd = (n, d=0) => (n == null || isNaN(n)) ? '—' : '$' + numFmt(n, d);
 const elEntry = document.getElementById('i_entry');
 const elStop = document.getElementById('i_stop');
 const elTarget = document.getElementById('i_target');
+const elTarget2 = document.getElementById('i_target2');
+const chkTarget2 = document.getElementById('chk_target2');
 const elRiskPct = document.getElementById('i_risk_pct');
 const elDrift = document.getElementById('i_drift');
 const elManualP = document.getElementById('i_manual_p');
@@ -1306,7 +1738,17 @@ function updateMarketHeader(data) {
   document.getElementById('mZeroG').textContent = opt.zero_gamma ? usd(opt.zero_gamma, 0) : '—';
   document.getElementById('mWalls').textContent = `${usd(opt.put_wall, 0)} / ${usd(opt.call_wall, 0)}`;
   document.getElementById('mIvRv').textContent = `${numFmt(opt.atm_iv, 1)}% · ${numFmt(opt.realised_vol_annualised, 1)}% (Ratio ${numFmt(opt.iv_rv_ratio, 2)})`;
-  document.getElementById('mExpMove').textContent = `±${usd(opt.expected_move_0dte, 0)} / ±${usd(opt.expected_move_weekly, 0)}`;
+  
+  const skewVal = opt.skew_25d || 0;
+  const skewEl = document.getElementById('mSkew25d');
+  if (skewEl) {
+    skewEl.textContent = `${skewVal >= 0 ? '+' : ''}${numFmt(skewVal, 2)}% (${skewVal > 0.5 ? 'Call Skew' : skewVal < -0.5 ? 'Put Skew' : 'Flat'})`;
+    skewEl.className = 'n ' + (skewVal > 0.5 ? 'pos' : skewVal < -0.5 ? 'neg' : '');
+  }
+
+  const em1s = opt.expected_move_0dte || 0;
+  const em2s = opt.expected_move_0dte_2sigma || em1s * 2.0;
+  document.getElementById('mExpMove').textContent = `±${usd(em1s, 0)} / ±${usd(em2s, 0)}`;
 
   // Update Orderflow panel
   const cvd = data.cvd || {};
@@ -1394,6 +1836,253 @@ function updateMarketHeader(data) {
   }
 
   renderFirmButtons(data.presets);
+  updateBriefingCard(data);
+  updateDeterministicEventLayer();
+}
+
+// ── Pre-Session Briefing Card ("Die Karte") & Anchor Handler ─────────────────
+function updateBriefingCard(data) {
+  const opt = data.options || {};
+  const anc = opt.session_anchor || {};
+  const deltas = opt.deltas_from_anchor || {};
+  const spot = data.spot || 64500;
+
+  // 1. Session Open Anchor Bar
+  const ancTimeEl = document.getElementById('ancTime');
+  if (ancTimeEl) ancTimeEl.textContent = anc.timestamp_utc ? `${anc.timestamp_utc.slice(11, 19)} UTC` : 'Initial';
+  
+  const ancSpotEl = document.getElementById('ancSpot');
+  if (ancSpotEl) ancSpotEl.textContent = anc.spot ? usd(anc.spot, 0) : '—';
+
+  const ancZeroGEl = document.getElementById('ancZeroG');
+  if (ancZeroGEl) ancZeroGEl.textContent = anc.zero_gamma ? usd(anc.zero_gamma, 0) : '—';
+
+  const ancIvEl = document.getElementById('ancIv');
+  if (ancIvEl) ancIvEl.textContent = anc.atm_iv ? `${numFmt(anc.atm_iv, 1)}%` : '—%';
+
+  const ancWallsEl = document.getElementById('ancWalls');
+  if (ancWallsEl) ancWallsEl.textContent = `${usd(anc.put_wall, 0)} / ${usd(anc.call_wall, 0)}`;
+
+  const driftBadge = document.getElementById('ancDriftNature');
+  if (driftBadge) {
+    const nature = deltas.drift_nature || 'STABLE';
+    if (nature === 'INFORMATIVE_OI_BUILD') {
+      driftBadge.textContent = '⚡ INFORMATIVER OI-AUFBAU';
+      driftBadge.className = 'drift-badge drift-info-badge';
+    } else if (nature === 'MECHANICAL_SPOT_DERIVATIVE') {
+      driftBadge.textContent = '⚙️ MECHANISCHER SPOT-DRIFT';
+      driftBadge.className = 'drift-badge drift-mech-badge';
+    } else {
+      driftBadge.textContent = 'STABIL';
+      driftBadge.className = 'drift-badge drift-stable-badge';
+    }
+  }
+
+  // 2. Briefing Table Rows
+  // Session-Korridor 1σ (Decayed with sqrt(t_rest/365))
+  const emDecayed = opt.expected_move_decayed_0dte || opt.expected_move_0dte || Math.round(spot * 0.012);
+  const emDecayedPct = (emDecayed / spot) * 100;
+  const tRestHours = opt.t_rest_0dte_hours !== undefined ? opt.t_rest_0dte_hours : 24.0;
+  
+  const corr1sEl = document.getElementById('bk_corr_1s');
+  if (corr1sEl) corr1sEl.textContent = `±${usd(emDecayed, 0)}`;
+  const corr1sPctEl = document.getElementById('bk_corr_1s_pct');
+  if (corr1sPctEl) corr1sPctEl.textContent = `${numFmt(emDecayedPct, 2)}%`;
+  const tRestEl = document.getElementById('bk_t_rest');
+  if (tRestEl) tRestEl.textContent = `${numFmt(tRestHours, 1)}h Rest bis 08:00 UTC (Full 24h: ±${usd(opt.expected_move_0dte, 0)})`;
+
+  // Gamma Flip (Zero-Γ)
+  const zeroGVal = opt.zero_gamma || 0;
+  const zeroGEl = document.getElementById('bk_zero_g');
+  if (zeroGEl) zeroGEl.textContent = zeroGVal ? usd(zeroGVal, 0) : '—';
+
+  const zeroGDeltaEl = document.getElementById('bk_zero_g_delta');
+  if (zeroGDeltaEl) {
+    const dZg = deltas.delta_zero_gamma !== undefined ? deltas.delta_zero_gamma : 0;
+    const isZgShift = Math.abs(dZg) >= 50;
+    zeroGDeltaEl.textContent = `${dZg >= 0 ? '+' : ''}${usd(dZg, 0)} ${isZgShift ? (deltas.drift_nature === 'INFORMATIVE_OI_BUILD' ? '(OI-Shift)' : '(Spot-Drift)') : '(Parität)'}`;
+    zeroGDeltaEl.className = 'briefing-delta ' + (isZgShift ? (dZg > 0 ? 'pos' : 'neg') : '');
+  }
+
+  // Call / Put Walls
+  const wallsEl = document.getElementById('bk_walls');
+  if (wallsEl) wallsEl.textContent = `Put: ${usd(opt.put_wall, 0)} · Call: ${usd(opt.call_wall, 0)}`;
+  
+  const wallsDeltaEl = document.getElementById('bk_walls_delta');
+  if (wallsDeltaEl) {
+    const dPut = deltas.delta_put_wall || 0;
+    const dCall = deltas.delta_call_wall || 0;
+    if (dPut === 0 && dCall === 0) {
+      wallsDeltaEl.textContent = 'Unverändert';
+      wallsDeltaEl.className = 'briefing-delta';
+    } else {
+      wallsDeltaEl.textContent = `Put: ${dPut >= 0 ? '+' : ''}${usd(dPut, 0)} | Call: ${dCall >= 0 ? '+' : ''}${usd(dCall, 0)}`;
+      wallsDeltaEl.className = 'briefing-delta warn';
+    }
+  }
+
+  // Regime with Hysteresis
+  const gexVal = opt.net_gex_usd || 0;
+  const gexRegime = opt.gex_regime || (gexVal < 0 ? 'AMPLIFYING' : 'DAMPENING');
+  const hBand = opt.hysteresis_band_usd || Math.max(150, Math.round(emDecayed * 0.25));
+  
+  const regimeEl = document.getElementById('bk_regime');
+  if (regimeEl) {
+    if (gexRegime === 'AMPLIFYING') {
+      regimeEl.innerHTML = `<span class="neg">Short Γ (Amplifying / Trend)</span>`;
+    } else {
+      regimeEl.innerHTML = `<span class="pos">Long Γ (Dampening / Pinning)</span>`;
+    }
+  }
+
+  const hBandEl = document.getElementById('bk_hysteresis');
+  if (hBandEl) {
+    hBandEl.textContent = `Hysterese: ±${usd(hBand, 0)} (0.25σ Filter)`;
+  }
+
+  // RV vs. IV
+  const ivRvEl = document.getElementById('bk_iv_rv');
+  if (ivRvEl) {
+    ivRvEl.textContent = `${numFmt(opt.realised_vol_annualised, 1)}% RV · ${numFmt(opt.atm_iv, 1)}% IV (Ratio ${numFmt(opt.iv_rv_ratio, 2)})`;
+  }
+  const ivDeltaEl = document.getElementById('bk_iv_delta');
+  if (ivDeltaEl) {
+    const dIv = deltas.delta_iv !== undefined ? deltas.delta_iv : 0;
+    ivDeltaEl.textContent = `Δ IV: ${dIv >= 0 ? '+' : ''}${numFmt(dIv, 2)} Vol-Punkte`;
+    ivDeltaEl.className = 'briefing-delta ' + (Math.abs(dIv) >= 1.0 ? 'warn' : '');
+  }
+
+  // 25Δ Skew
+  const skewEl = document.getElementById('bk_skew');
+  if (skewEl) {
+    const s = opt.skew_25d || 0;
+    skewEl.textContent = `${s >= 0 ? '+' : ''}${numFmt(s, 2)}% (${s > 0.5 ? 'Call Overhang' : s < -0.5 ? 'Put Overhang' : 'Neutral'})`;
+    skewEl.className = 'briefing-val ' + (s > 0.5 ? 'pos' : s < -0.5 ? 'neg' : '');
+  }
+  const skewNoteEl = document.getElementById('bk_skew_note');
+  if (skewNoteEl) {
+    const s = opt.skew_25d || 0;
+    skewNoteEl.textContent = s > 0.5 ? 'OTM Upside Hedging teurer' : s < -0.5 ? 'OTM Downside Protection teurer' : 'Symmetrisches Smile';
+  }
+
+  // Liq Clusters
+  const liq = data.liquidation_proxy || {};
+  const longLiqs = liq.long_liquidations || [];
+  const shortLiqs = liq.short_liquidations || [];
+  const bkLiqEl = document.getElementById('bk_liq');
+  if (bkLiqEl) {
+    const nearestLong = longLiqs[0] ? `${longLiqs[0].label}: ${usd(longLiqs[0].price, 0)}` : '—';
+    const nearestShort = shortLiqs[0] ? `${shortLiqs[0].label}: ${usd(shortLiqs[0].price, 0)}` : '—';
+    bkLiqEl.textContent = `Long Flush: ${nearestLong} · Short Flush: ${nearestShort}`;
+  }
+
+  // 3. Material Change Feed
+  const changes = opt.material_changes || [];
+  const feedList = document.getElementById('changeFeedList');
+  if (feedList) {
+    if (changes.length === 0) {
+      feedList.innerHTML = `
+        <div class="change-feed-item">
+          <span class="change-feed-time">00:00:00 UTC</span>
+          <span class="change-feed-tag tag-mech-drift">SESSION ANKER</span>
+          <span>Keine materiellen Shifts seit Session-Start registriert. Positionierung stabil.</span>
+        </div>
+      `;
+    } else {
+      feedList.innerHTML = changes.slice(0, 10).map(c => {
+        const tagClass = c.tag === 'INFORMATIVE_OI' ? 'tag-info-build' : (c.tag === 'REGIME_FLIP' ? 'tag-regime-flip' : 'tag-mech-drift');
+        return `
+          <div class="change-feed-item">
+            <span class="change-feed-time">${c.time_utc}</span>
+            <span class="change-feed-tag ${tagClass}">${c.tag}</span>
+            <span>${c.message}</span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+
+// ── Reset Session Anchor Call ───────────────────────────────────────────────
+async function resetSessionAnchor() {
+  try {
+    const btn = document.querySelector('.anchor-btn');
+    if (btn) btn.textContent = 'Fixiere Anker...';
+    await fetch('/risk/reset-anchor', { method: 'POST' });
+    await fetchState();
+    if (btn) btn.textContent = '⚓ Session-Open Anker neu fixieren';
+  } catch (err) {
+    console.error('Failed to reset session anchor:', err);
+  }
+}
+
+// ── Deterministic Event Layer Timers ─────────────────────────────────────────
+function updateDeterministicEventLayer() {
+  const now = new Date();
+  
+  // Format countdown string
+  const formatCountdown = (diffMs) => {
+    if (diffMs <= 0) return '00:00:00';
+    const totalSec = Math.floor(diffMs / 1000);
+    const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+    const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+    const s = String(totalSec % 60).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  };
+
+  // 1. Deribit Daily Expiry (08:00 UTC)
+  const deribitTarget = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 8, 0, 0));
+  if (now.getTime() >= deribitTarget.getTime()) {
+    deribitTarget.setUTCDate(deribitTarget.getUTCDate() + 1);
+  }
+  const deribitDiff = deribitTarget.getTime() - now.getTime();
+  const deribitCountEl = document.getElementById('ev_deribit_count');
+  if (deribitCountEl) deribitCountEl.textContent = formatCountdown(deribitDiff);
+
+  // 2. Weekly / Monthly Friday Expiry (Friday 08:00 UTC)
+  const fridayTarget = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 8, 0, 0));
+  const currentDay = fridayTarget.getUTCDay(); // 0 = Sun, 5 = Fri
+  let daysUntilFriday = (5 - currentDay + 7) % 7;
+  if (daysUntilFriday === 0 && now.getTime() >= fridayTarget.getTime()) {
+    daysUntilFriday = 7;
+  }
+  fridayTarget.setUTCDate(fridayTarget.getUTCDate() + daysUntilFriday);
+  const fridayDiff = fridayTarget.getTime() - now.getTime();
+  const fridayDays = Math.floor(fridayDiff / (1000 * 3600 * 24));
+  const fridayRemainingMs = fridayDiff % (1000 * 3600 * 24);
+  const weeklyCountEl = document.getElementById('ev_weekly_count');
+  if (weeklyCountEl) {
+    weeklyCountEl.textContent = `${fridayDays}d ${formatCountdown(fridayRemainingMs)}`;
+  }
+
+  // 3. 8-Hour Funding Resets (00:00, 08:00, 16:00 UTC)
+  const utcHours = now.getUTCHours();
+  let nextFundingHour = 0;
+  if (utcHours < 8) nextFundingHour = 8;
+  else if (utcHours < 16) nextFundingHour = 16;
+  else nextFundingHour = 24;
+
+  const fundingTarget = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), nextFundingHour % 24, 0, 0));
+  if (nextFundingHour === 24) {
+    fundingTarget.setUTCDate(fundingTarget.getUTCDate() + 1);
+  }
+  const fundingDiff = fundingTarget.getTime() - now.getTime();
+  const fundingCountEl = document.getElementById('ev_funding_count');
+  if (fundingCountEl) fundingCountEl.textContent = formatCountdown(fundingDiff);
+
+  // 4. Prop-Risk Resets (Breakout 00:30 UTC & FundingPips 21:00 UTC)
+  // Compute closest next reset
+  const breakoutTarget = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 30, 0));
+  if (now.getTime() >= breakoutTarget.getTime()) breakoutTarget.setUTCDate(breakoutTarget.getUTCDate() + 1);
+
+  const fpTarget = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 21, 0, 0));
+  if (now.getTime() >= fpTarget.getTime()) fpTarget.setUTCDate(fpTarget.getUTCDate() + 1);
+
+  const nextPropTarget = breakoutTarget.getTime() < fpTarget.getTime() ? breakoutTarget : fpTarget;
+  const propName = breakoutTarget.getTime() < fpTarget.getTime() ? 'Breakout (00:30 UTC)' : 'FundingPips (21:00 UTC)';
+  const propDiff = nextPropTarget.getTime() - now.getTime();
+  const propCountEl = document.getElementById('ev_prop_count');
+  if (propCountEl) propCountEl.textContent = `${formatCountdown(propDiff)} (${propName})`;
 }
 
 function updateSpotMetricsOnly() {
@@ -1423,6 +2112,8 @@ async function evaluateTrade() {
   const entry = parseFloat(elEntry.value);
   const stop = parseFloat(elStop.value);
   const target = parseFloat(elTarget.value);
+  const hasTarget2 = chkTarget2 ? chkTarget2.checked : false;
+  const target2 = hasTarget2 && elTarget2 ? parseFloat(elTarget2.value) : null;
   const riskPct = parseFloat(elRiskPct.value) / 100;
   const driftVal = parseFloat(elDrift.value) / 100;
   const manualPVal = parseFloat(elManualP.value);
@@ -1431,6 +2122,9 @@ async function evaluateTrade() {
   document.getElementById('v_entry').textContent = usd(entry, 0);
   document.getElementById('v_stop').textContent = usd(stop, 0);
   document.getElementById('v_target').textContent = usd(target, 0);
+  if (elTarget2 && document.getElementById('v_target2')) {
+    document.getElementById('v_target2').textContent = hasTarget2 ? usd(parseFloat(elTarget2.value), 0) : 'Off';
+  }
   document.getElementById('v_risk_pct').textContent = `${numFmt(riskPct * 100, 2)} %`;
   document.getElementById('v_drift').textContent = driftVal === 0
     ? '0.0 % (Martingale / Zero Drift)'
@@ -1445,6 +2139,7 @@ async function evaluateTrade() {
         entry,
         stop,
         target,
+        target_2: target2,
         rules_key: currentFirmKey,
         risk_pct: riskPct,
         annual_drift: driftVal,
@@ -1478,6 +2173,23 @@ function paintEvaluation(data) {
   document.getElementById('g_stop_dist').textContent = `−${usd(geo.entry - geo.stop, 0)} (${numFmt((geo.entry - geo.stop) / geo.entry * 100, 2)} %)`;
   document.getElementById('g_target_dist').textContent = `+${usd(geo.target - geo.entry, 0)} (${numFmt((geo.target - geo.entry) / geo.entry * 100, 2)} %)`;
   
+  // Scale-Out Geometry breakdown if active
+  const rowT2 = document.getElementById('row_scale_out_t2');
+  const rowP = document.getElementById('row_scale_out_p');
+  if (geo.scale_out) {
+    if (rowT2) {
+      rowT2.style.display = 'flex';
+      document.getElementById('g_scale_out_t2').textContent = `RRR2 ${numFmt(geo.scale_out.rrr_2, 2)}:1 (+${usd(geo.scale_out.target_2 - geo.entry, 0)})`;
+    }
+    if (rowP) {
+      rowP.style.display = 'flex';
+      document.getElementById('g_scale_out_p').textContent = `${numFmt(geo.scale_out.p_t2_given_t1 * 100, 1)}% | Full Win: ${numFmt(geo.scale_out.p_full_win * 100, 1)}%`;
+    }
+  } else {
+    if (rowT2) rowT2.style.display = 'none';
+    if (rowP) rowP.style.display = 'none';
+  }
+
   const evEl = document.getElementById('g_ev_r');
   evEl.textContent = `${geo.expectancy_r >= 0 ? '+' : ''}${numFmt(geo.expectancy_r, 3)} R`;
   evEl.className = 'v ' + (geo.expectancy_r > 0 ? 'pos' : geo.expectancy_r < 0 ? 'neg' : '');
@@ -1637,14 +2349,29 @@ function renderPriceAxis() {
     svgHtml += `<text x="${w - 6}" y="${y - 4}" fill="#54666F" font-size="9" font-family="IBM Plex Mono" text-anchor="end">${p.toLocaleString('en-US')}</text>`;
   }
 
-  // 2. Expected Move Band (±1σ 0DTE & 7D)
-  const yEm0High = pToY(spot + (opt.expected_move_0dte || expMove * 0.35));
-  const yEm0Low = pToY(spot - (opt.expected_move_0dte || expMove * 0.35));
+  // 2. Expected Move Bands (±1σ & ±2σ Decayed 0DTE + 7D)
+  const em0_1s = opt.expected_move_decayed_0dte || opt.expected_move_0dte || (expMove * 0.35);
+  const em0_2s = opt.expected_move_0dte_2sigma || (em0_1s * 2.0);
+  const tRestH = opt.t_rest_0dte_hours !== undefined ? opt.t_rest_0dte_hours : 24.0;
+
+  const yEm2High = pToY(spot + em0_2s);
+  const yEm2Low = pToY(spot - em0_2s);
+  const yEm0High = pToY(spot + em0_1s);
+  const yEm0Low = pToY(spot - em0_1s);
+
+  // 2-sigma outer band (light shading)
+  svgHtml += `<rect x="0" y="${yEm2High}" width="${w}" height="${Math.max(1, yEm2Low - yEm2High)}" fill="rgba(84, 102, 111, 0.03)" />`;
+  svgHtml += `<line x1="0" y1="${yEm2High}" x2="${w}" y2="${yEm2High}" stroke="#B8C5CB" stroke-width="1" stroke-dasharray="2 3" />`;
+  svgHtml += `<line x1="0" y1="${yEm2Low}" x2="${w}" y2="${yEm2Low}" stroke="#B8C5CB" stroke-width="1" stroke-dasharray="2 3" />`;
+  svgHtml += `<text x="6" y="${yEm2High + 9}" fill="#6E828D" font-size="7.5" font-family="IBM Plex Sans Condensed">+2σ (${usd(spot + em0_2s, 0)})</text>`;
+  svgHtml += `<text x="6" y="${yEm2Low - 3}" fill="#6E828D" font-size="7.5" font-family="IBM Plex Sans Condensed">−2σ (${usd(spot - em0_2s, 0)})</text>`;
+
+  // 1-sigma inner band with t_rest decay indicator
   svgHtml += `<rect x="0" y="${yEm0High}" width="${w}" height="${Math.max(1, yEm0Low - yEm0High)}" fill="rgba(84, 102, 111, 0.05)" />`;
   svgHtml += `<line x1="0" y1="${yEm0High}" x2="${w}" y2="${yEm0High}" stroke="#9BAAB1" stroke-width="1" stroke-dasharray="4 2" />`;
   svgHtml += `<line x1="0" y1="${yEm0Low}" x2="${w}" y2="${yEm0Low}" stroke="#9BAAB1" stroke-width="1" stroke-dasharray="4 2" />`;
-  svgHtml += `<text x="6" y="${yEm0High + 10}" fill="#54666F" font-size="8" font-family="IBM Plex Sans Condensed">+1σ 0DTE</text>`;
-  svgHtml += `<text x="6" y="${yEm0Low - 4}" fill="#54666F" font-size="8" font-family="IBM Plex Sans Condensed">−1σ 0DTE</text>`;
+  svgHtml += `<text x="6" y="${yEm0High + 9}" fill="#54666F" font-size="8" font-family="IBM Plex Sans Condensed" font-weight="600">+1σ Decayed [${numFmt(tRestH,1)}h] (${usd(spot + em0_1s, 0)})</text>`;
+  svgHtml += `<text x="6" y="${yEm0Low - 3}" fill="#54666F" font-size="8" font-family="IBM Plex Sans Condensed" font-weight="600">−1σ Decayed [${numFmt(tRestH,1)}h] (${usd(spot - em0_1s, 0)})</text>`;
 
   // 3. Option Clusters (Bars on Left)
   const clusters = opt.top_clusters || [];
@@ -1699,11 +2426,18 @@ function renderPriceAxis() {
     svgHtml += `<text x="${w * 0.32}" y="${y - 2}" fill="${liqColor}" font-size="7.5" font-family="IBM Plex Mono">${l.label} (${usd(l.price, 0)})</text>`;
   });
 
-  // 6. Zero Gamma Line & Key Walls
+  // 6. Zero Gamma Line & Key Walls (with Hysteresis Band)
   if (opt.zero_gamma && opt.zero_gamma >= minP && opt.zero_gamma <= maxP) {
-    const yZ = pToY(opt.zero_gamma);
-    svgHtml += `<line x1="0" y1="${yZ}" x2="${w}" y2="${yZ}" stroke="var(--amber)" stroke-width="1.5" />`;
-    svgHtml += `<text x="8" y="${yZ - 4}" fill="var(--amber)" font-size="9" font-family="IBM Plex Sans Condensed" font-weight="700">ZERO GAMMA (${usd(opt.zero_gamma, 0)})</text>`;
+    const zg = opt.zero_gamma;
+    const yZ = pToY(zg);
+    const hBand = opt.hysteresis_band_usd || Math.max(150, Math.round(em0_1s * 0.25));
+    const yHHigh = pToY(zg + hBand);
+    const yHLow = pToY(zg - hBand);
+
+    // Hysteresis Band (light amber background)
+    svgHtml += `<rect x="0" y="${yHHigh}" width="${w}" height="${Math.max(2, yHLow - yHHigh)}" fill="rgba(168, 119, 34, 0.08)" stroke="rgba(168, 119, 34, 0.25)" stroke-width="0.5" stroke-dasharray="2 2" />`;
+    svgHtml += `<line x1="0" y1="${yZ}" x2="${w}" y2="${yZ}" stroke="var(--amber)" stroke-width="1.8" />`;
+    svgHtml += `<text x="8" y="${yZ - 4}" fill="var(--amber)" font-size="9" font-family="IBM Plex Sans Condensed" font-weight="700">ZERO GAMMA (${usd(zg, 0)}) · Hysteresis ±${usd(hBand, 0)}</text>`;
   }
 
   // 7. Spot Price Marker
@@ -1716,10 +2450,12 @@ function renderPriceAxis() {
     </g>
   `;
 
-  // 8. Interactive User Barriers (Stop, Entry, Target)
+  // 8. Interactive User Barriers (Stop, Entry, Target 1, Target 2)
   const entry = parseFloat(elEntry.value);
   const stop = parseFloat(elStop.value);
   const target = parseFloat(elTarget.value);
+  const hasTarget2 = chkTarget2 ? chkTarget2.checked : false;
+  const target2 = (hasTarget2 && elTarget2) ? parseFloat(elTarget2.value) : null;
 
   const yTarget = pToY(target);
   const yEntry = pToY(entry);
@@ -1728,12 +2464,24 @@ function renderPriceAxis() {
   const handleW = 100;
   const handleX = w - handleW - 8;
 
-  // Target line & handle
+  // Target 2 line & handle (if enabled)
+  if (hasTarget2 && target2 !== null && !isNaN(target2)) {
+    const yTarget2 = pToY(target2);
+    svgHtml += `<line x1="0" y1="${yTarget2}" x2="${w}" y2="${yTarget2}" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="2 3" opacity="0.85" />`;
+    svgHtml += `
+      <g id="handle_target2" transform="translate(${handleX}, ${yTarget2})" style="cursor:ns-resize;" data-barrier="target2">
+        <rect x="0" y="-9" width="${handleW}" height="18" fill="rgba(27, 96, 70, 0.9)" stroke="var(--green)" stroke-width="1" />
+        <text x="6" y="3.5" fill="#fff" font-size="8.5" font-family="IBM Plex Mono" font-weight="700">T2 2σ ${usd(target2, 0)}</text>
+      </g>
+    `;
+  }
+
+  // Target 1 line & handle
   svgHtml += `<line x1="0" y1="${yTarget}" x2="${w}" y2="${yTarget}" stroke="var(--green)" stroke-width="2" stroke-dasharray="3 2" />`;
   svgHtml += `
     <g id="handle_target" transform="translate(${handleX}, ${yTarget})" style="cursor:ns-resize;" data-barrier="target">
       <rect x="0" y="-10" width="${handleW}" height="20" fill="var(--green)" />
-      <text x="6" y="4" fill="#fff" font-size="9" font-family="IBM Plex Mono" font-weight="700">TARGET ${usd(target, 0)}</text>
+      <text x="6" y="4" fill="#fff" font-size="9" font-family="IBM Plex Mono" font-weight="700">TARGET 1 ${usd(target, 0)}</text>
     </g>
   `;
 
@@ -1995,18 +2743,22 @@ function initAxisDrag() {
     const entry = parseFloat(elEntry.value);
     const stop = parseFloat(elStop.value);
     const target = parseFloat(elTarget.value);
+    const hasTarget2 = chkTarget2 ? chkTarget2.checked : false;
+    const target2 = (hasTarget2 && elTarget2) ? parseFloat(elTarget2.value) : null;
 
     const dStop = Math.abs(clickedPrice - stop);
     const dEntry = Math.abs(clickedPrice - entry);
     const dTarget = Math.abs(clickedPrice - target);
+    const dTarget2 = target2 !== null ? Math.abs(clickedPrice - target2) : Infinity;
 
     // If close to a handle, start dragging barrier
-    const minD = Math.min(dStop, dEntry, dTarget);
+    const minD = Math.min(dStop, dEntry, dTarget, dTarget2);
     const threshold = (state?.options?.expected_move_weekly || 3000) * 0.04;
     if (minD < threshold) {
       if (minD === dStop) isDraggingBarrier = 'stop';
       else if (minD === dEntry) isDraggingBarrier = 'entry';
-      else isDraggingBarrier = 'target';
+      else if (minD === dTarget) isDraggingBarrier = 'target';
+      else if (minD === dTarget2) isDraggingBarrier = 'target2';
       wrap.style.cursor = 'ns-resize';
       hideAxisMenu();
     } else {
@@ -2031,12 +2783,19 @@ function initAxisDrag() {
     } else if (isDraggingBarrier === 'entry') {
       const curStop = parseFloat(elStop.value);
       const curTarget = parseFloat(elTarget.value);
+      const curTarget2 = elTarget2 ? parseFloat(elTarget2.value) : null;
       const shift = newPrice - curEntry;
       elEntry.value = newPrice;
       elStop.value = Math.round((curStop + shift) / 25) * 25;
       elTarget.value = Math.round((curTarget + shift) / 25) * 25;
+      if (elTarget2 && curTarget2 !== null) {
+        elTarget2.value = Math.round((curTarget2 + shift) / 25) * 25;
+      }
     } else if (isDraggingBarrier === 'target') {
       elTarget.value = Math.max(newPrice, curEntry + 25);
+    } else if (isDraggingBarrier === 'target2' && elTarget2) {
+      const curTarget = parseFloat(elTarget.value);
+      elTarget2.value = Math.max(newPrice, curTarget + 25);
     }
 
     renderPriceAxis();
@@ -2209,12 +2968,21 @@ function updateTemplateLogs() {
 }
 
 // ── Event Listeners ─────────────────────────────────────────────────────────
-[elEntry, elStop, elTarget, elRiskPct, elDrift, elManualP].forEach(input => {
-  input.addEventListener('input', () => {
+[elEntry, elStop, elTarget, elTarget2, elRiskPct, elDrift, elManualP].forEach(input => {
+  if (input) {
+    input.addEventListener('input', () => {
+      renderPriceAxis();
+      evaluateTrade();
+    });
+  }
+});
+
+if (chkTarget2) {
+  chkTarget2.addEventListener('change', () => {
     renderPriceAxis();
     evaluateTrade();
   });
-});
+}
 
 btnResetManualP.addEventListener('click', () => {
   elManualP.value = 0;

@@ -151,18 +151,92 @@ export interface SimulationResult {
   median_days_to_pass: number | null;
   expected_challenge_value_usd: number;
   binding_constraint: "daily_limit" | "max_drawdown" | "no_edge";
+  regime_conditioned?: {
+    gex_regime: "AMPLIFYING" | "DAMPENING" | "NEUTRAL";
+    vol_multiplier: number;
+    drift_applied: number;
+  };
+}
+
+export interface ScaleOutTradeConfig {
+  weight_1: number; // e.g. 0.50 (50% on T1)
+  weight_2: number; // e.g. 0.50 (50% on T2 with BE stop)
+  rrr_1: number;
+  rrr_2: number;
+  p_t1: number;
+  p_t2_given_t1: number;
+}
+
+export interface SimulationOptions {
+  rules: PropFirmRules;
+  p_win: number;
+  rrr: number;
+  risk_usd: number;
+  cost_usd: number;
+  trades_per_day?: number;
+  runs?: number;
+  max_days?: number;
+  scale_out?: ScaleOutTradeConfig;
+  gex_regime?: "AMPLIFYING" | "DAMPENING" | "NEUTRAL";
+  skew_25d?: number; // e.g. +0.03 or -0.04
 }
 
 export function simulate_challenge(
-  rules: PropFirmRules,
-  p_win: number,
-  rrr: number,
-  risk_usd: number,
-  cost_usd: number,
-  trades_per_day = 3,
-  runs = 4000,
-  max_days = 60
+  rules_or_options: PropFirmRules | SimulationOptions,
+  p_win_param?: number,
+  rrr_param?: number,
+  risk_usd_param?: number,
+  cost_usd_param?: number,
+  trades_per_day_param = 3,
+  runs_param = 4000,
+  max_days_param = 60
 ): SimulationResult {
+  let rules: PropFirmRules;
+  let p_win: number;
+  let rrr: number;
+  let risk_usd: number;
+  let cost_usd: number;
+  let trades_per_day = 3;
+  let runs = 4000;
+  let max_days = 60;
+  let scale_out: ScaleOutTradeConfig | undefined;
+  let gex_regime: "AMPLIFYING" | "DAMPENING" | "NEUTRAL" = "NEUTRAL";
+  let skew_25d = 0.0;
+
+  if ("key" in rules_or_options && typeof (rules_or_options as PropFirmRules).account === "number") {
+    rules = rules_or_options as PropFirmRules;
+    p_win = p_win_param ?? 0.40;
+    rrr = rrr_param ?? 2.0;
+    risk_usd = risk_usd_param ?? 50;
+    cost_usd = cost_usd_param ?? 2;
+    trades_per_day = trades_per_day_param;
+    runs = runs_param;
+    max_days = max_days_param;
+  } else {
+    const opts = rules_or_options as SimulationOptions;
+    rules = opts.rules;
+    p_win = opts.p_win;
+    rrr = opts.rrr;
+    risk_usd = opts.risk_usd;
+    cost_usd = opts.cost_usd;
+    trades_per_day = opts.trades_per_day ?? 3;
+    runs = opts.runs ?? 4000;
+    max_days = opts.max_days ?? 60;
+    scale_out = opts.scale_out;
+    gex_regime = opts.gex_regime ?? "NEUTRAL";
+    skew_25d = opts.skew_25d ?? 0.0;
+  }
+
+  let vol_multiplier = 1.0;
+  if (gex_regime === "AMPLIFYING") {
+    vol_multiplier = 1.30;
+  } else if (gex_regime === "DAMPENING") {
+    vol_multiplier = 0.85;
+  }
+
+  const drift_bias = skew_25d * 0.15;
+  const adjusted_p_win = Math.min(0.95, Math.max(0.05, p_win + drift_bias));
+
   let pass_count = 0;
   let daily_bust_count = 0;
   let total_bust_count = 0;
@@ -188,15 +262,42 @@ export function simulate_challenge(
       let day_pnl = 0;
 
       for (let t = 0; t < trades_per_day; t++) {
-        const is_win = rnd() < p_win;
-        const pnl = (is_win ? rrr * risk_usd : -risk_usd) - cost_usd;
+        let pnl = 0;
+
+        if (scale_out) {
+          const hit_t1 = rnd() < scale_out.p_t1;
+          if (!hit_t1) {
+            pnl = -risk_usd - cost_usd;
+          } else {
+            const hit_t2 = rnd() < scale_out.p_t2_given_t1;
+            if (hit_t2) {
+              const gain_t1 = scale_out.weight_1 * scale_out.rrr_1 * risk_usd;
+              const gain_t2 = scale_out.weight_2 * scale_out.rrr_2 * risk_usd;
+              pnl = gain_t1 + gain_t2 - cost_usd;
+            } else {
+              const gain_t1 = scale_out.weight_1 * scale_out.rrr_1 * risk_usd;
+              pnl = gain_t1 - cost_usd;
+            }
+          }
+        } else {
+          const is_win = rnd() < adjusted_p_win;
+          pnl = (is_win ? rrr * risk_usd : -risk_usd) - cost_usd;
+        }
+
+        if (pnl < 0 && gex_regime === "AMPLIFYING" && rnd() < 0.15) {
+          pnl *= 1.25;
+        }
+
         eq += pnl;
         day_pnl = eq - day_start;
 
         if (rules.drawdown_type === "balance") {
           peak = Math.max(peak, eq);
         }
-        const floor = rules.drawdown_type === "static" ? rules.account - rules.max_drawdown : peak - rules.max_drawdown;
+        const floor =
+          rules.drawdown_type === "static"
+            ? rules.account - rules.max_drawdown
+            : peak - rules.max_drawdown;
 
         if (day_pnl <= -rules.daily_loss_limit) {
           daily_bust_count++;
@@ -240,7 +341,7 @@ export function simulate_challenge(
     (pass_pct / 100) * (rules.target * rules.profit_split) - rules.challenge_fee;
 
   let binding: "daily_limit" | "max_drawdown" | "no_edge" = "max_drawdown";
-  if (p_win * rrr - (1 - p_win) <= 0) {
+  if (p_win * rrr - (1 - p_win) <= 0 && (!scale_out || scale_out.p_t1 * scale_out.rrr_1 - (1 - scale_out.p_t1) <= 0)) {
     binding = "no_edge";
   } else if (daily_bust_count > total_bust_count * 1.3) {
     binding = "daily_limit";
@@ -260,5 +361,10 @@ export function simulate_challenge(
     median_days_to_pass: days_to_pass.length ? days_to_pass[Math.floor(days_to_pass.length / 2)] : null,
     expected_challenge_value_usd: Number(expected_challenge_value_usd.toFixed(0)),
     binding_constraint: binding,
+    regime_conditioned: {
+      gex_regime,
+      vol_multiplier,
+      drift_applied: Number(drift_bias.toFixed(4)),
+    },
   };
 }

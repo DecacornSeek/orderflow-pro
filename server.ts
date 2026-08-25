@@ -10,7 +10,7 @@ import { MarketStructureEngine } from "./src/core/marketStructure.js";
 import { SignalEngine } from "./src/core/signalEngine.js";
 import { ExchangeFeed } from "./src/core/exchangeFeed.js";
 import { OptionsAgent } from "./src/core/optionsAgent.js";
-import { evaluate_geometry, realised_vol_annualised } from "./src/core/geometry.js";
+import { evaluate_geometry, evaluate_scale_out_geometry, realised_vol_annualised } from "./src/core/geometry.js";
 import { PROP_FIRM_PRESETS, size_position, simulate_challenge } from "./src/core/propRules.js";
 
 const PORT = 3000;
@@ -184,12 +184,18 @@ app.get("/risk/state", (req, res) => {
   });
 });
 
+app.post("/risk/reset-anchor", (req, res) => {
+  optionsAgent.resetSessionAnchor();
+  res.json({ status: "ok", message: "Session anchor reset successfully." });
+});
+
 app.post("/risk/evaluate", (req, res) => {
   try {
     const {
       entry,
       stop,
       target,
+      target_2,
       rules_key = "breakout_10k",
       risk_pct = 0.005,
       annual_drift = 0.0,
@@ -197,11 +203,14 @@ app.post("/risk/evaluate", (req, res) => {
       cost_r = 0.04,
       manual_win_rate,
       trades_per_day = 3,
+      gex_regime,
+      skew_25d,
     } = req.body;
 
     const numEntry = parseFloat(entry);
     const numStop = parseFloat(stop);
     const numTarget = parseFloat(target);
+    const numTarget2 = target_2 !== undefined && target_2 !== null ? parseFloat(target_2) : null;
 
     if (isNaN(numEntry) || isNaN(numStop) || isNaN(numTarget)) {
       return res.status(400).json({ error: "Invalid entry, stop, or target values." });
@@ -227,6 +236,21 @@ app.post("/risk/evaluate", (req, res) => {
       parseFloat(cost_r) || 0.04
     );
 
+    // Optional Multi-Barrier Scale-Out Geometry (Tranche 1 & Tranche 2 with Breakeven Trail)
+    let scaleOutGeometry = null;
+    if (numTarget2 !== null && !isNaN(numTarget2) && numTarget2 > numTarget) {
+      scaleOutGeometry = evaluate_scale_out_geometry(
+        numEntry,
+        numStop,
+        numTarget,
+        numTarget2,
+        parseFloat(annual_vol) || 0.52,
+        parseFloat(annual_drift) || 0.0,
+        0.50,
+        parseFloat(cost_r) || 0.04
+      );
+    }
+
     // If manual win rate provided by user, compute manual expectancy
     let manualEvaluation = null;
     if (manual_win_rate !== undefined && manual_win_rate !== null && !isNaN(manual_win_rate)) {
@@ -248,22 +272,39 @@ app.post("/risk/evaluate", (req, res) => {
       0.0002
     );
 
-    // 3. Monte Carlo Challenge Simulation
+    // 3. Monte Carlo Challenge Simulation (Object-based with Scale-Out & GEX Regime Conditioning)
     const effectivePWin = manual_win_rate ? parseFloat(manual_win_rate) : geometry.p_target;
-    const simulation = simulate_challenge(
+    const optSnap = optionsAgent.getSnapshot();
+    const effectiveRegime = gex_regime || optSnap.gex_regime;
+    const effectiveSkew = skew_25d !== undefined ? parseFloat(skew_25d) : optSnap.skew_25d;
+
+    const simulation = simulate_challenge({
       rules,
-      effectivePWin,
-      geometry.rrr,
-      sizing.risk_usd,
-      sizing.commission_rt,
-      parseInt(trades_per_day, 10) || 3,
-      4000,
-      60
-    );
+      p_win: effectivePWin,
+      rrr: geometry.rrr,
+      risk_usd: sizing.risk_usd,
+      cost_usd: sizing.commission_rt,
+      trades_per_day: parseInt(trades_per_day, 10) || 3,
+      runs: 4000,
+      max_days: 60,
+      scale_out: scaleOutGeometry
+        ? {
+            weight_1: scaleOutGeometry.weight_1,
+            weight_2: scaleOutGeometry.weight_2,
+            rrr_1: scaleOutGeometry.rrr_1,
+            rrr_2: scaleOutGeometry.rrr_2,
+            p_t1: scaleOutGeometry.p_t1,
+            p_t2_given_t1: scaleOutGeometry.p_t2_given_t1,
+          }
+        : undefined,
+      gex_regime: effectiveRegime,
+      skew_25d: effectiveSkew,
+    });
 
     res.json({
       geometry: {
         ...geometry,
+        scale_out: scaleOutGeometry,
         manual_evaluation: manualEvaluation,
       },
       sizing,

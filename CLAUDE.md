@@ -360,6 +360,69 @@ PR4a:    COMPLETE — Session/Weekly Context Layer + Regime + 105 Tests verified
 Sprint B: COMPLETE — Delta Divergenz + Session-Phasen + IB + Profil-Konsolidierung (65 neue Asserts)
 Sprint B2: COMPLETE — Interpretations-Layer Steps 5-8 (Struktur + Zonen + Road Map, 97 neue Asserts)
 Sprint B3: COMPLETE — Backlog-Abarbeitung (Lethargy + Inside Bar + VPOC Trend + Signal Prompt, 104 neue Tests)
+Sprint D (Options & Pre-Session Briefing): COMPLETE — Deribit Chain + GEX Surface + Pre-Session Briefing-Karte ("Die Karte") + Event Layer + Hysterese-Filter + Restzeit-Decayed 1σ (25 Tests)
+Sprint E (Risk & Challenge Geometry): COMPLETE — Multi-Barrier Tranches (P(T1), P(T2|T1)) + Regime-Conditioned Monte Carlo (4000 Paths) + Prop Presets + Shared Price Axis Sync
+
+## Sprint D & E: Options-Layer, Pre-Session Briefing & Risk Engine — COMPLETE (2026-08)
+
+### 1. Options Agent & Dealer Gamma Positioning (`src/core/optionsAgent.ts`)
+- **Deribit Options Chain Aggregation**:
+  - Live & Mock Polling für BTC-Optionen mit Strike-, Expiry- und Type-Splits (Call/Put).
+  - **Net GEX ($/pt)**: GEX-Berechnung über Black-Scholes-Gamma unter inverser $S^3$- bzw. $S^2$-Hedging-Struktur ($GEX = \sum \Gamma_i \times OI_i \times S^2 \times 100 \times \text{DealerSign}$).
+  - **Zero-Gamma (Gamma-Flip)**: Spot-Level, bei dem $\text{Net GEX} = 0$ durchläuft.
+  - **Key Walls**: Put Wall (Peak Put-Gamma) & Call Wall (Peak Call-Gamma).
+  - **25Δ-Skew**: Vol-Punkte-Differenz ($IV_{25\Delta\text{ Call}} - IV_{25\Delta\text{ Put}}$) zur Erfassung von Tail-Risk-Prämien und OTM-Schiefe.
+- **Hysterese-Filter auf GEX-Regime**:
+  - Verhindert Flackern am Flip-Punkt: Umschaltung zwischen `AMPLIFYING` (Short $\Gamma$) und `DAMPENING` (Long $\Gamma$) erfolgt erst nach Durchbruch über eine Pufferzone von $\pm 0.25\sigma$ der verbleibenden Session ($\min \$150$).
+- **Restzeit-Decayed Expected Move**:
+  - $1\sigma$-Korridor berechnet mit $\sqrt{t_{\text{rest}}/365}$ bis zum nächsten 08:00 UTC Settlement (inkl. 15-Minuten Floor) statt starrer 24h-Session-Spannweite.
+  - Bereitstellung von $1\sigma$ (68% Terminal-Containment, ~32% Touch-Probability) und $2\sigma$ (95% Terminal-Containment).
+- **Session-Open Anker & Drift-Differenzierung**:
+  - Snapshot der Referenzwerte bei Session-Start (Spot, Zero-$\Gamma$, IV, Walls).
+  - Automatische Trennung zwischen **`INFORMATIVEM OI-AUFBAU`** (Zero-$\Gamma$ oder Walls verschieben sich bei ruhigem Spot) und **`MECHANISCHEM SPOT-DRIFT`** (Verschiebung nur als Derivat der Spot-Bewegung).
+  - `/risk/reset-anchor` Endpoint für Re-Anchoring.
+- **Änderungsliste (Material Change Feed)**:
+  - Ereignisbasiertes Log signifikanter Shifts ($\Delta \text{Zero-}\Gamma > \$250$, Wall-Sprünge, $\Delta \text{IV} > 1.0\%$, Regime-Wechsel).
+
+### 2. Pre-Session Briefing-Karte („Die Karte“ · `static/risk.html`)
+- **Strikter Scope**: Zeigt ausschließlich Level und Positionierungsdaten, die im klassischen Chart **nicht** sichtbar sind:
+  - **Session-Korridor 1σ**: $S \times IV \times \sqrt{t_{\text{rest}}/365}$ mit Restzeit-Anzeige und Guardrail (*Keine Touch-Grenze*).
+  - **Gamma-Flip**: Umschlagpunkt des Dealer-Hedgings (*Kein statischer Support/Resistance*).
+  - **Call- / Put-Wall**: Zonen mit maximalem Hedging-Pinning.
+  - **Regime**: Long $\Gamma$ vs. Short $\Gamma$ mit Hysterese-Bandbreite (*Keine Richtungsindikation*).
+  - **RV vs. IV & 25Δ Skew**: Verhältnis von realisierter zu impliziter Volatilität.
+  - **Liquidation-Cluster**: 25x, 50x und 100x Hebel-Pools.
+- **Deterministischer Event-Layer**:
+  - **08:00 UTC Deribit Daily Expiry**: Countdown & Auswertung der empirischen Doppelbedingung (ATM-OI Top-Dezil + Net $\Gamma < 0$).
+  - **Freitag 08:00 UTC Weekly / Monthly Expiry**: Höheres OI, belastbarere Walls.
+  - **8h Funding-Resets**: 00:00, 08:00, 16:00 UTC Fenster.
+  - **Prop-Risk Resets**: Breakout (00:30 UTC), FundingPips (17:00 EST / 21:00 UTC).
+- **Struktur-Besonderheit bei BTC-Optionen**:
+  - Hinweis zur Marktstruktur: Miner/Treasury Covered Calls (Dealer Long Calls) vs. Retail Call Buying (Dealer Short Calls); Gamma-Flip als Orientierungsmarke, nicht als binärer Schalter.
+
+### 3. Multi-Barrier Scale-Out Geometry & Monte Carlo Engine (`src/core/geometry.ts`)
+- **Analytische First-Passage GBM Identitäten**:
+  - $P(T_1) = \frac{1 - e^{-2\mu d_s / \sigma^2}}{e^{2\mu d_{t1} / \sigma^2} - e^{-2\mu d_s / \sigma^2}}$ (mit Grenzübergang $\frac{d_s}{d_s + d_{t1}}$ für $\mu \to 0$).
+  - Bedingte Zweitbarrieren-Wahrscheinlichkeit $P(T_2 \mid T_1)$ mit Breakeven-Stop-Trail.
+  - Disjunktes Ergebnis-Trio: Voll-Gewinn ($T_1 + T_2$), Teil-Gewinn ($T_1$ gefolgt von BE-Stop), Voll-Verlust (Initial Stop).
+- **Regime-Conditioned Monte Carlo Simulator**:
+  - 4.000 vektorisierte Pfad-Simulationen (Challenge-Modus).
+  - Volatilitäts-Multiplikatoren konditioniert auf GEX-Regime ($1.30\times$ im Amplifying Regime, $0.85\times$ im Dampening Regime) und $25\Delta$-Skew-Drift.
+  - Diskrete Bust-Kategorien (Trailing Drawdown vs. Daily Loss Limit) und Pass-Wahrscheinlichkeiten.
+- **Prop Firm Preset Engine**:
+  - Native Unterstützung für Breakout (Static 4% Max DD / 2.5% Daily), FundingPips (Trailing EOD 6% DD), Apex Trader, TopStep, FTMO.
+  - Dynamisches Positions-Sizing mit Hebel-Kappung bei engen Stops.
+
+### 4. Shared Price Axis (SVG Interactive Axis)
+- Visuelle Verankerung aller Options- und Orderflow-Level:
+  - Dynamische $1\sigma / 2\sigma$ Decayed Expected Move Bänder.
+  - Zero-Gamma-Linie mit visuellem Hysterese-Pufferband.
+  - Interaktive Zieh-Handles für **Stop**, **Entry**, **Target 1 (Tranche 1)** und **Target 2 (Tranche 2)** mit synchroner Slider- und Parameter-Rückkopplung.
+  - Liquidation Clusters (25x, 50x, 100x).
+
+### 5. Verifikation & Tests (`src/tests/test_geometry_and_options.ts`)
+- 25 automatisierte Unit- und Integrationstests (GBM First-Passage Identitäten, Breakeven RRR, Scale-Out Wahrscheinlichkeiten, Prop-Sizing, Challenge Monte Carlo, Options GEX Modeling, $25\Delta$-Skew).
+- Ausführung: `npm test` oder `npx tsx src/tests/test_geometry_and_options.ts`.
 
 ## Daten-Struktur
 data/
