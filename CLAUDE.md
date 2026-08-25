@@ -462,15 +462,28 @@ liefern (OI je Strike + IV), niemals vorberechnetes GEX — sonst bricht die
 Zerlegung oben, die Halterseiten-Annahme waere die des Anbieters und der
 Gamma-Floor bei T->0 ebenfalls. Adapter bilden auf parse_chain() ab.
 
-### Offen (Charter §4 und §6, noch nicht gebaut)
-- Impliziter Session-Korridor mit sqrt(Restzeit bis Reset) statt
-  sqrt(Sessionlaenge) (§5)
-- Event-Layer: 08:00 UTC, Weekly, Monthly, Funding-Resets, Prop-Resets (§4.1)
-- Liquidationscluster aus Perp-OI (§4.1)
-- Darstellung der Zwei-Uhren-Trennung im UI (§4.2) — gemessen wird sie,
-  risk.html zeigt sie noch nicht getrennt an
-- Hysterese auf den Regime-Zustand, Session-Open-Anker, Aenderungsliste (§6)
+### Pre-Session-Karte (Charter §4.1) — gebaut
+static/risk.html traegt oben ein scrollfreies Briefing (348 px, endet bei
+429 px im 1000-px-Fenster), darunter unveraendert das Trade-Management.
+Kacheln: Dealer-Hedging mit Hysterese-Fortschritt, Gamma-Flip mit Delta zum
+Sessionanker, Walls, eingepreiste Spanne mit Restzeit und beiden
+Wahrscheinlichkeitslesarten, IV gegen RV, Liquidationscluster (als nicht
+verfuegbar ausgewiesen), Level-Bewegung mechanisch gegen informativ,
+Ereignisliste, Aenderungsliste, die vier Annahmen aus §7 aufklappbar.
+Der frühere Metrik-Streifen ist entfallen — er zeigte dieselben sechs Werte
+ohne Kontext.
+
+Jede Kachel traegt den Leerzustand: fehlende Werte erscheinen als "—" mit
+Begruendung, nie als 0. Gepruft im Browser (Chromium), Rasterbreiten messen
+sauber auf, Konsole ohne Fehler ausser den Google-Fonts, die die
+Entwicklungsumgebung blockt.
+
+### Offen (Charter §4 und §6)
+- Liquidationscluster aus Perp-OI (§4.1) — Kachel steht, Daten fehlen
 - Endlicher Horizont in der Geometrie: p_timeout ist konstant 0 (§5)
+- Target-Einordnung in den Korridor (session_corridor.target_position()
+  existiert und ist getestet, ist aber noch nicht mit dem Target-Feld des
+  Trade-Managements verbunden)
 
 ### Ungeloester Konflikt
 static/risk.html enthaelt eine "Structural Proposal Engine"

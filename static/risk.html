@@ -728,6 +728,106 @@
     color: var(--ink2);
     line-height: 1.5;
   }
+
+/* ══ Pre-Session-Briefing (Charter §4.1) ════════════════════════════════════
+   Scrollfrei: die Karte muss ohne Scrollen lesbar sein, sonst ist sie kein
+   Briefing mehr, sondern ein Blatt. */
+#briefing {
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  margin: 0 0 10px 0;
+}
+#briefing .bf-head {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 6px 10px; border-bottom: 1px solid var(--rule2);
+  font-family: var(--cond); text-transform: uppercase; letter-spacing: .08em;
+  font-size: 11px; color: var(--ink2);
+}
+#briefing .bf-head strong { color: var(--ink); letter-spacing: .06em; }
+#briefing .bf-head .bf-clock { margin-left: auto; font-family: var(--mono); font-size: 10.5px; }
+
+.bf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 1px; background: var(--rule2);
+}
+/* Ab Terminalbreite ein festes 6-Spalten-Raster. Die Spannweiten summieren
+   sich je Zeile exakt auf 6, sonst bleiben leere Kacheln stehen. */
+@media (min-width: 1180px) {
+  .bf-grid { grid-template-columns: repeat(6, 1fr); }
+  .bf-cell[data-span="2"] { grid-column: span 2; }
+  .bf-cell[data-span="3"] { grid-column: span 3; }
+  .bf-cell[data-span="6"] { grid-column: 1 / -1; }
+}
+.bf-cell { background: var(--panel); padding: 7px 10px 8px; min-height: 62px; }
+.bf-cell .k {
+  font-family: var(--cond); font-size: 9.5px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--ink2); margin-bottom: 3px;
+}
+.bf-cell .v { font-family: var(--mono); font-size: 15px; color: var(--ink); line-height: 1.25; }
+.bf-cell .v.sm { font-size: 12.5px; }
+.bf-cell .s { font-family: var(--mono); font-size: 10px; color: var(--ink2); margin-top: 2px; }
+.bf-cell .s.warn { color: var(--amber); }
+.bf-cell .delta { font-family: var(--mono); font-size: 10px; margin-left: 6px; }
+.delta.up { color: var(--green); } .delta.dn { color: var(--red); }
+
+/* Regime-Zustaende */
+.rg { display: inline-block; padding: 1px 7px; border: 1px solid currentColor; font-size: 12px; }
+.rg.long { color: var(--green); } .rg.short { color: var(--red); }
+.rg.trans { color: var(--amber); } .rg.unknown { color: var(--ink2); }
+.rg-pending {
+  font-family: var(--mono); font-size: 9.5px; color: var(--ink2); margin-top: 3px;
+}
+.rg-bar { height: 2px; background: var(--rule2); margin-top: 2px; }
+.rg-bar > i { display: block; height: 100%; background: var(--amber); }
+
+/* Korridor */
+.corr { font-family: var(--mono); font-size: 11.5px; line-height: 1.5; }
+.corr .band { display: flex; gap: 6px; }
+.corr .band b { font-weight: 600; min-width: 16px; }
+.corr .prob { color: var(--ink2); font-size: 9.5px; }
+
+/* Ereignisliste */
+/* Hoehe ist ein Vielfaches der Zeilenhoehe: eine halb abgeschnittene Zeile
+   sieht aus wie ein Darstellungsfehler, nicht wie eine scrollbare Liste. */
+.bf-events { max-height: 108px; overflow-y: auto; }
+.bf-events .ev {
+  display: flex; gap: 8px; align-items: baseline;
+  font-family: var(--mono); font-size: 10.5px;
+  height: 18px; line-height: 18px;
+}
+.bf-events .ev .cd { min-width: 52px; color: var(--ink); }
+.bf-events .ev .lb { color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev.expiry .cd { color: var(--purple); }
+.ev.prop_reset .cd { color: var(--red); }
+.ev.funding .cd { color: var(--blue); }
+.ev.macro .cd { color: var(--amber); }
+
+/* Zwei-Uhren-Trennung (§4.2) */
+.shift-row { font-family: var(--mono); font-size: 10.5px; line-height: 1.45; }
+.shift-row .mech { color: var(--ink2); }
+.shift-row .info { color: var(--ink); font-weight: 600; }
+.shift-none { font-family: var(--mono); font-size: 10.5px; color: var(--ink2); }
+
+/* Aenderungsliste */
+.bf-changes { max-height: 90px; overflow-y: auto; }
+.bf-changes .ch {
+  font-family: var(--mono); font-size: 10.5px;
+  height: 18px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bf-changes .ch time { color: var(--ink2); margin-right: 7px; }
+
+/* Grenzen (§7) */
+#bf-limits { border-top: 1px solid var(--rule2); padding: 5px 10px 7px; }
+#bf-limits summary {
+  font-family: var(--cond); font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink2); cursor: pointer;
+}
+#bf-limits .lim { font-family: var(--mono); font-size: 10px; margin-top: 5px; line-height: 1.45; }
+#bf-limits .lim b { color: var(--ink); font-weight: 600; }
+#bf-limits .lim span { color: var(--ink2); }
+
+.bf-empty { font-family: var(--mono); font-size: 11px; color: var(--ink2); }
 </style>
 </head>
 <body>
@@ -748,15 +848,85 @@
   </div>
 </header>
 
-<!-- Top Market Strip -->
-<div class="mkt">
-  <div><div class="l">BTC Spot</div><div class="n" id="mSpot">$—</div></div>
-  <div><div class="l">Net GEX · Regime</div><div class="n" id="mGex">—</div></div>
-  <div><div class="l">Zero Gamma Level</div><div class="n" id="mZeroG">—</div></div>
-  <div><div class="l">Put / Call Wall</div><div class="n" id="mWalls">—</div></div>
-  <div><div class="l">ATM IV · 24h RV</div><div class="n" id="mIvRv">—</div></div>
-  <div><div class="l">Expected Move (0DTE / 7D)</div><div class="n" id="mExpMove">—</div></div>
-</div>
+
+<!-- ══ Pre-Session-Briefing (Charter §4.1) ═══════════════════════════════════
+     Zustand, keine Bewertung. Kein Richtungslabel, keine Empfehlung. -->
+<section id="briefing">
+  <div class="bf-head">
+    <strong>Pre-Session-Briefing</strong>
+    <span>Wie ist der Markt aufgestellt?</span>
+    <span class="bf-clock" id="bfClock">—</span>
+  </div>
+
+  <div class="bf-grid">
+
+    <!-- Regime mit Hysterese (§4.1, §6) -->
+    <div class="bf-cell">
+      <div class="k">Dealer-Hedging</div>
+      <div class="v"><span class="rg unknown" id="bfRegime">—</span></div>
+      <div class="rg-pending" id="bfRegimePending"></div>
+      <div class="rg-bar" style="display:none" id="bfRegimeBar"><i style="width:0%"></i></div>
+    </div>
+
+    <!-- Gamma-Flip -->
+    <div class="bf-cell">
+      <div class="k">Gamma-Flip (Zero Γ)</div>
+      <div class="v" id="bfFlip">—<span class="delta" id="bfFlipDelta"></span></div>
+      <div class="s" id="bfFlipSub"></div>
+    </div>
+
+    <!-- Walls -->
+    <div class="bf-cell">
+      <div class="k">Put- / Call-Wall</div>
+      <div class="v sm" id="bfWalls">—</div>
+      <div class="s" id="bfWallsSub">Groesste Gamma-Konzentration</div>
+    </div>
+
+    <!-- Korridor (§5, §7.1) -->
+    <div class="bf-cell" data-span="2">
+      <div class="k">Eingepreiste Spanne bis Reset <span id="bfCorrClock"></span></div>
+      <div class="corr" id="bfCorridor"><span class="bf-empty">—</span></div>
+    </div>
+
+    <!-- RV vs IV -->
+    <div class="bf-cell">
+      <div class="k">IV gegen RV</div>
+      <div class="v sm" id="bfIvRv">—</div>
+      <div class="s" id="bfIvRvSub"></div>
+    </div>
+
+    <!-- Liquidationscluster -->
+    <div class="bf-cell">
+      <div class="k">Liquidationscluster</div>
+      <div class="v sm" id="bfLiq">—</div>
+      <div class="s" id="bfLiqSub"></div>
+    </div>
+
+    <!-- Zwei-Uhren-Trennung (§4.2) -->
+    <div class="bf-cell" data-span="2">
+      <div class="k">Level-Bewegung: mechanisch gegen informativ</div>
+      <div id="bfShift"><span class="shift-none">Noch kein Kettentakt zum Vergleich.</span></div>
+    </div>
+
+    <!-- Ereignisse -->
+    <div class="bf-cell" data-span="3">
+      <div class="k">Anstehend</div>
+      <div class="bf-events" id="bfEvents"><span class="bf-empty">—</span></div>
+    </div>
+
+    <!-- Aenderungen (§6) -->
+    <div class="bf-cell" data-span="6">
+      <div class="k">Materielle Aenderungen seit Sessionstart</div>
+      <div class="bf-changes" id="bfChanges"><span class="bf-empty">Nichts gemeldet.</span></div>
+    </div>
+
+  </div>
+
+  <details id="bf-limits">
+    <summary>Was diese Zahlen voraussetzen (4 Annahmen)</summary>
+    <div id="bfLimits"></div>
+  </details>
+</section>
 
 <!-- Main 2-Column Grid -->
 <div class="layout-grid">
@@ -1254,6 +1424,168 @@ const elDrift = document.getElementById('i_drift');
 const elManualP = document.getElementById('i_manual_p');
 const btnResetManualP = document.getElementById('btnResetManualP');
 
+
+// ══ Pre-Session-Briefing (Charter §4.1) ════════════════════════════════════
+// Zustand, keine Bewertung. Jede Zelle muss den Leerzustand tragen koennen —
+// eine fehlende Zahl wird als fehlend gezeigt, nicht als null (Charter §2).
+
+const REGIME_TEXT = {
+  LONG_GAMMA:  ['Long Gamma',  'long',    'Hedging daempft'],
+  SHORT_GAMMA: ['Short Gamma', 'short',   'Hedging verstaerkt'],
+  TRANSITION:  ['Transition',  'trans',   'im Totband — kein Regime behauptet'],
+  UNKNOWN:     ['wird bestimmt', 'unknown', 'noch keine belastbare Beobachtung'],
+};
+
+const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+function fmtCountdown(hours) {
+  if (hours == null) return '—';
+  const total = Math.max(0, Math.round(hours * 60));
+  const h = Math.floor(total / 60), m = total % 60;
+  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+}
+
+function deltaSpan(value, digits = 0) {
+  if (value == null || Math.abs(value) < 0.5) return '';
+  const cls = value > 0 ? 'up' : 'dn';
+  return `<span class="delta ${cls}">${value > 0 ? '+' : ''}${numFmt(value, digits)}</span>`;
+}
+
+function renderBriefing(data) {
+  const opt = data.options || {};
+  const corr = data.corridor;
+  const reg = data.regime || {};
+  const anchorD = (data.session_anchor && data.session_anchor.deltas) || {};
+
+  setText('bfClock', new Date().toUTCString().slice(17, 22) + ' UTC');
+
+  // ── Regime ───────────────────────────────────────────────────────────────
+  const [rgLabel, rgCls, rgNote] = REGIME_TEXT[reg.state] || REGIME_TEXT.UNKNOWN;
+  const rgEl = document.getElementById('bfRegime');
+  if (rgEl) { rgEl.textContent = rgLabel; rgEl.className = 'rg ' + rgCls; }
+
+  // Der laufende Kandidat wird sichtbar gemacht, nicht versteckt: der Nutzer
+  // soll sehen, dass sich etwas anbahnt, ohne dass die Anzeige schon kippt.
+  const bar = document.getElementById('bfRegimeBar');
+  if (reg.pending_state && reg.dwell_required) {
+    const pct = Math.min(100, (reg.pending_seconds / reg.dwell_required) * 100);
+    const [pLabel] = REGIME_TEXT[reg.pending_state] || ['?'];
+    setText('bfRegimePending',
+      `${rgNote} · Kandidat ${pLabel} haelt ${Math.round(reg.pending_seconds)}s von ${Math.round(reg.dwell_required)}s`);
+    if (bar) { bar.style.display = 'block'; bar.firstElementChild.style.width = pct + '%'; }
+  } else {
+    setText('bfRegimePending', rgNote);
+    if (bar) bar.style.display = 'none';
+  }
+
+  // ── Gamma-Flip ───────────────────────────────────────────────────────────
+  const flip = opt.zero_gamma;
+  setHtml('bfFlip', (flip == null ? '—' : usd(flip, 0)) + deltaSpan(anchorD.zero_gamma));
+  setText('bfFlipSub', flip == null
+    ? 'Kein Nulldurchgang in der Kette — derzeit existiert kein Flip.'
+    : (data.spot != null
+        ? (data.spot > flip ? 'Spot darueber' : 'Spot darunter')
+        : ''));
+
+  // ── Walls ────────────────────────────────────────────────────────────────
+  const pw = opt.put_wall, cw = opt.call_wall;
+  setHtml('bfWalls', (pw == null ? '—' : usd(pw, 0)) + '  /  ' + (cw == null ? '—' : usd(cw, 0)));
+  setText('bfWallsSub', (pw == null && cw == null)
+    ? 'Keine Kette verfuegbar'
+    : 'Wo Hedging klebt — nicht, wo der Preis dreht');
+
+  // ── Korridor ─────────────────────────────────────────────────────────────
+  if (!corr) {
+    setHtml('bfCorridor', '<span class="bf-empty">Ohne gemessene ATM-IV keine eingepreiste Spanne.</span>');
+    setText('bfCorrClock', '');
+  } else {
+    setText('bfCorrClock', `· ${corr.reset_at.slice(11, 16)} UTC · noch ${fmtCountdown(corr.remaining_hours)}`);
+    const zeilen = corr.bands.map(b => `
+      <div class="band">
+        <b>${numFmt(b.sigma, 0)}σ</b>
+        <span>${usd(b.low, 0)} – ${usd(b.high, 0)}</span>
+        <span class="prob">Ende innerhalb ${numFmt(b.terminal_containment * 100, 0)}% ·
+          Beruehrung ${numFmt(b.touch_probability_upper * 100, 0)}%</span>
+      </div>`).join('');
+    const floored = corr.floored
+      ? '<div class="prob" style="color:var(--amber)">Restzeit unter 5 Minuten — gerechnet wird mit dem Floor.</div>'
+      : '';
+    setHtml('bfCorridor', zeilen + floored);
+  }
+
+  // ── IV gegen RV ──────────────────────────────────────────────────────────
+  // opt.* ist vom Adapter bereits auf Prozent gebracht, data.volatility.*
+  // steht weiterhin als Dezimalwert da. Hier konsequent die Prozentwerte.
+  const vol = data.volatility || {};
+  const iv = opt.atm_iv, rv = opt.realised_vol_annualised;
+  setHtml('bfIvRv',
+    (iv == null ? '—' : numFmt(iv, 1) + '%') + '  /  ' + (rv == null ? '—' : numFmt(rv, 1) + '%'));
+  if (iv != null && rv != null && vol.iv_rv_ratio != null) {
+    setText('bfIvRvSub', vol.iv_rv_ratio >= 1
+      ? `Ratio ${numFmt(vol.iv_rv_ratio, 2)} — implizit ueber realisiert`
+      : `Ratio ${numFmt(vol.iv_rv_ratio, 2)} — implizit unter realisiert`);
+  } else {
+    setText('bfIvRvSub', rv == null ? 'RV braucht mehr Kurshistorie' : '');
+  }
+
+  // ── Liquidationscluster ──────────────────────────────────────────────────
+  if (data.liquidations) {
+    setText('bfLiq', 'siehe Preisachse');
+    setText('bfLiqSub', '');
+  } else {
+    setText('bfLiq', 'nicht verfuegbar');
+    setText('bfLiqSub', data.liquidations_note || '');
+  }
+
+  // ── Zwei-Uhren-Trennung (§4.2) ───────────────────────────────────────────
+  const shifts = data.chain_shift || [];
+  if (!shifts.length) {
+    setHtml('bfShift', '<span class="shift-none">Noch kein Kettentakt zum Vergleich.</span>');
+  } else {
+    // Faellt 0DTE, Weekly und Monthly auf denselben Termin (jeder letzte
+    // Freitag im Monat), zeigen alle drei dieselbe Verschiebung — einmal reicht.
+    const gesehen = new Set();
+    const eindeutig = shifts.filter(sh => {
+      if (gesehen.has(sh.expiry)) return false;
+      gesehen.add(sh.expiry);
+      return true;
+    });
+    setHtml('bfShift', eindeutig.map(sh => {
+      const mech = sh.zero_gamma_mechanical;
+      const info = sh.zero_gamma_informative;
+      const teile = [];
+      teile.push(`<span class="mech">mechanisch ${mech == null ? '—' : (mech > 0 ? '+' : '') + numFmt(mech, 0)}</span>`);
+      teile.push(info == null
+        ? '<span class="mech">informativ —</span>'
+        : `<span class="${sh.is_informative ? 'info' : 'mech'}">informativ ${info > 0 ? '+' : ''}${numFmt(info, 0)}</span>`);
+      if (sh.call_wall_moved) teile.push('<span class="info">Call-Wall gewandert</span>');
+      if (sh.put_wall_moved) teile.push('<span class="info">Put-Wall gewandert</span>');
+      const spot = sh.spot_move ? ` <span class="mech">(Spot ${sh.spot_move > 0 ? '+' : ''}${numFmt(sh.spot_move, 0)})</span>` : ' <span class="mech">(Spot steht)</span>';
+      return `<div class="shift-row"><b>${sh.label.toUpperCase()}</b> ${teile.join(' · ')}${spot}</div>`;
+    }).join(''));
+  }
+
+  // ── Ereignisse ───────────────────────────────────────────────────────────
+  const events = data.events || [];
+  setHtml('bfEvents', events.length
+    ? events.map(e => `<div class="ev ${e.kind}" title="${e.note.replace(/"/g, '&quot;')}">
+         <span class="cd">${fmtCountdown(e.hours_until)}</span>
+         <span class="lb">${e.label}</span></div>`).join('')
+    : '<span class="bf-empty">—</span>');
+
+  // ── Aenderungen ──────────────────────────────────────────────────────────
+  const changes = data.changes || [];
+  setHtml('bfChanges', changes.length
+    ? changes.map(c => `<div class="ch"><time>${c.at.slice(11, 16)}</time>${c.text}</div>`).join('')
+    : '<span class="bf-empty">Nichts gemeldet.</span>');
+
+  // ── Grenzen (§7) ─────────────────────────────────────────────────────────
+  const limits = data.limits || [];
+  setHtml('bfLimits', limits.map(l =>
+    `<div class="lim"><b>${l.titel}.</b> <span>${l.text}</span></div>`).join(''));
+}
+
 // ── Adapter: Backend-Payload -> Ansicht ─────────────────────────────────────
 // Der Backend-Snapshot laesst unbekannte Groessen bewusst null. Diese Funktion
 // normalisiert nur Einheiten und Verschachtelung — sie fuellt nichts auf.
@@ -1296,6 +1628,7 @@ async function fetchState() {
       currentSpot = data.spot;
       document.getElementById('liveDot').classList.add('live');
       document.getElementById('connText').textContent = 'LIVE (Binance/Deribit)';
+      renderBriefing(data);
       updateMarketHeader(data);
       renderPriceAxis();
       evaluateTrade();
@@ -1326,26 +1659,30 @@ function connectWs() {
 // ── Header & Market Strip Updates ───────────────────────────────────────────
 function updateMarketHeader(data) {
   const opt = data.options || {};
-  document.getElementById('mSpot').textContent = usd(data.spot, 2);
+  // Die Kopfzeilen-Metriken sind ins Briefing gewandert; die Schreibzugriffe
+  // laufen ueber setText und tun nichts, wenn das Element fehlt.
+  setText('mSpot', usd(data.spot, 2));
   
   // Kein `|| 0`: ein fehlender GEX ist nicht null GEX. Null hiesse "ausgeglichen",
   // unbekannt heisst "keine Kette" — die Ansicht muss das unterscheiden (Charter §7).
   const gexVal = (opt.net_gex_usd == null) ? null : opt.net_gex_usd;
   const gexMio = (gexVal == null) ? null : gexVal / 1000000;
   const gexEl = document.getElementById('mGex');
-  if (gexVal == null) {
-    gexEl.textContent = '— (keine Optionskette)';
-    gexEl.className = 'n';
-  } else {
-    const gexRegime = opt.gex_regime || (gexVal < 0 ? 'AMPLIFYING' : 'DAMPENING');
-    gexEl.textContent = `${gexMio >= 0 ? '+' : ''}${numFmt(gexMio, 2)}M (${gexRegime === 'AMPLIFYING' ? 'Amplifying' : 'Dampening'})`;
-    gexEl.className = 'n ' + (gexVal < 0 ? 'neg' : 'pos');
+  if (gexEl) {
+    if (gexVal == null) {
+      gexEl.textContent = '— (keine Optionskette)';
+      gexEl.className = 'n';
+    } else {
+      const gexRegime = opt.gex_regime || (gexVal < 0 ? 'AMPLIFYING' : 'DAMPENING');
+      gexEl.textContent = `${gexMio >= 0 ? '+' : ''}${numFmt(gexMio, 2)}M (${gexRegime === 'AMPLIFYING' ? 'Amplifying' : 'Dampening'})`;
+      gexEl.className = 'n ' + (gexVal < 0 ? 'neg' : 'pos');
+    }
   }
 
-  document.getElementById('mZeroG').textContent = opt.zero_gamma ? usd(opt.zero_gamma, 0) : '—';
-  document.getElementById('mWalls').textContent = `${usd(opt.put_wall, 0)} / ${usd(opt.call_wall, 0)}`;
-  document.getElementById('mIvRv').textContent = `${numFmt(opt.atm_iv, 1)}% · ${numFmt(opt.realised_vol_annualised, 1)}% (Ratio ${numFmt(opt.iv_rv_ratio, 2)})`;
-  document.getElementById('mExpMove').textContent = `±${usd(opt.expected_move_0dte, 0)} / ±${usd(opt.expected_move_weekly, 0)}`;
+  setText('mZeroG', opt.zero_gamma ? usd(opt.zero_gamma, 0) : '—');
+  setText('mWalls', `${usd(opt.put_wall, 0)} / ${usd(opt.call_wall, 0)}`);
+  setText('mIvRv', `${numFmt(opt.atm_iv, 1)}% · ${numFmt(opt.realised_vol_annualised, 1)}% (Ratio ${numFmt(opt.iv_rv_ratio, 2)})`);
+  setText('mExpMove', `±${usd(opt.expected_move_0dte, 0)} / ±${usd(opt.expected_move_weekly, 0)}`);
 
   // Update Orderflow panel
   const cvd = data.cvd || {};
@@ -1458,7 +1795,7 @@ function updateMarketHeader(data) {
 }
 
 function updateSpotMetricsOnly() {
-  document.getElementById('mSpot').textContent = usd(currentSpot, 2);
+  setText('mSpot', usd(currentSpot, 2));
 }
 
 function renderFirmButtons(presets) {
@@ -1517,11 +1854,32 @@ async function evaluateTrade() {
 
     if (res.ok) {
       const data = await res.json();
+      // Das Backend antwortet mit {error: ...}, wenn die Geometrie ungueltig
+      // ist oder keine Volatilitaet gemessen wurde. Dann gibt es nichts zu
+      // zeichnen — die Meldung gehoert hin, nicht ein Absturz.
+      if (data.error) { showEvaluationNotice(data.error); return; }
+      showEvaluationNotice(null);
       paintEvaluation(data);
     }
   } catch (err) {
     console.error('Evaluate error:', err);
   }
+}
+
+function showEvaluationNotice(text) {
+  let el = document.getElementById('evalNotice');
+  if (!el) {
+    const anchor = document.getElementById('g_be_winrate');
+    const host = anchor ? anchor.closest('.card') : null;
+    if (!host) return;
+    el = document.createElement('div');
+    el.id = 'evalNotice';
+    el.style.cssText = 'font-family:var(--mono);font-size:10.5px;color:var(--amber);' +
+                       'padding:4px 0 2px;line-height:1.4;';
+    host.insertBefore(el, host.firstChild);
+  }
+  el.textContent = text || '';
+  el.style.display = text ? 'block' : 'none';
 }
 
 function paintEvaluation(data) {

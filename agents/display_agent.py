@@ -343,9 +343,17 @@ class DisplayAgent:
         # Charter §4.2: nur die informativen Verschiebungen melden. Eine
         # Bewegung, die vom Spot kommt, gehoert nicht in die Aenderungsliste —
         # sonst ist die Liste voll und die eine Meldung, die zaehlt, geht unter.
+        # Faellt 0DTE, Weekly und Monthly auf denselben Termin (jeder letzte
+        # Freitag im Monat), zeigen alle drei dieselbe Verschiebung. Gemeldet
+        # wird sie einmal, sonst flutet ein Ereignis die Liste dreifach.
+        gemeldet = set()
         for shift in options.get("chain_shift", []):
             if not shift.get("is_informative"):
                 continue
+            termin = shift.get("expiry")
+            if termin in gemeldet:
+                continue
+            gemeldet.add(termin)
             label = shift.get("label", "?")
             teile = []
             zg = shift.get("zero_gamma_informative")

@@ -143,6 +143,7 @@ class ChainShift:
     """
 
     label: str
+    expiry: datetime                          # damit gleiche Termine erkennbar sind
     spot_move: float                          # Spotbewegung seit letzter Kette
     zero_gamma_mechanical: Optional[float]    # Verschiebung allein durch Spot
     zero_gamma_informative: Optional[float]   # Verschiebung allein durch OI
@@ -780,6 +781,7 @@ class OptionsAgent:
 
             shifts.append(ChainShift(
                 label=label,
+                expiry=exp_dt,
                 spot_move=spot_now - spot_then,
                 zero_gamma_mechanical=_delta(eg_mech.zero_gamma, eg_then.zero_gamma),
                 zero_gamma_informative=_delta(eg_now.zero_gamma, eg_mech.zero_gamma),
@@ -966,6 +968,7 @@ def snapshot_to_dict(snap: OptionsSnapshot) -> Dict[str, Any]:
         "chain_shift": [
             {
                 "label": sh.label,
+                "expiry": sh.expiry.isoformat(),
                 "spot_move": round(sh.spot_move, 2),
                 "zero_gamma_mechanical": sh.zero_gamma_mechanical,
                 "zero_gamma_informative": sh.zero_gamma_informative,
