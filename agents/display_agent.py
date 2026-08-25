@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import logging
 import math
 import os
@@ -12,8 +13,11 @@ from pydantic import BaseModel
 
 from agents.options_agent import snapshot_to_dict
 from core.broker import Broker, AGGREGATED, OPTIONS, SIGNALS, TRADES
+from core.event_layer import build_events, events_to_dict
 from core.history import History
 import core.metrics as _metrics
+from core.regime_state import ChangeLog, RegimeTracker, SessionAnchor
+from core.session_corridor import build_corridor, corridor_to_dict, target_position
 from strategies.base import (
     PROP_FIRM_PRESETS,
     RiskGuardrails,
@@ -27,6 +31,40 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
 STATIC = os.path.join(STATIC_DIR, "index.html")
 RISK_PAGE = os.path.join(STATIC_DIR, "risk.html")
+
+
+# Charter §7: Jede angezeigte Zahl traegt eine Annahme. Diese vier muessen
+# fuer den Nutzer sichtbar sein, sonst wird die Karte ueberinterpretiert.
+# Sie stehen hier und nicht im HTML, damit sie nur einmal existieren.
+LIMITS = [
+    {
+        "key": "terminal_containment",
+        "titel": "68% ist Terminal-Containment, keine Beruehrungsgrenze",
+        "text": "Der Anteil, der zum Reset im Band endet. Die Wahrscheinlichkeit, "
+                "das obere 1-Sigma-Band waehrend der Session zu beruehren, liegt "
+                "nach dem Reflexionsprinzip bei rund 32%.",
+    },
+    {
+        "key": "dealer_side",
+        "titel": "Das GEX-Vorzeichen haengt an einer Annahme ueber die Halterseite",
+        "text": "Bei BTC steht Covered-Call-Writing von Minern und Treasuries gegen "
+                "Retail-Call-Buying. Das Vorzeichen ist schwaecher bestimmt als bei "
+                "SPX. Der Flip ist eine Orientierungsmarke, kein Schalter.",
+    },
+    {
+        "key": "walls",
+        "titel": "Walls markieren, wo Hedging klebt — nicht, wo der Preis dreht",
+        "text": "Eine Wall ist die groesste Gamma-Konzentration, keine Aussage "
+                "darueber, dass der Preis dort umkehrt.",
+    },
+    {
+        "key": "gamma_floor",
+        "titel": "Gamma-Floor bei T gegen 0",
+        "text": "Ohne Floor springt die Anzeige kurz vor Settlement in einen "
+                "Extremzustand, der ein Artefakt der Formel ist. Gerechnet wird "
+                "mit mindestens 15 Minuten Restlaufzeit.",
+    },
+]
 
 
 class EvaluateRequest(BaseModel):
@@ -53,6 +91,14 @@ class DisplayAgent:
         # eigene Engines zu halten — es gibt genau einen Datenpfad (Charter §2).
         self._last_aggregated: Optional[Dict[str, Any]] = None
         self._last_options: Optional[Dict[str, Any]] = None
+
+        # Charter §6: Stabilitaet der Anzeige. Die Zustandsautomaten laufen im
+        # Broker-Loop, nicht im HTTP-Handler — sonst wuerde die Poll-Rate des
+        # Browsers die Verweildauer der Hysterese bestimmen.
+        self._regime = RegimeTracker()
+        self._anchor = SessionAnchor()
+        self._changes = ChangeLog()
+        self._regime_state = self._regime.update(None)
         self._app = self._build_app()
 
     def _build_app(self) -> FastAPI:
@@ -198,6 +244,7 @@ class DisplayAgent:
             "liquidations_note": "Noch nicht verfuegbar — verlangt Perp-OI je Preisniveau.",
             "presets": {k: rules_to_dict(r) for k, r in PROP_FIRM_PRESETS.items()},
             "data_ready": agg is not None,
+            **self._build_context(),
         }
 
     def _evaluate(self, req: "EvaluateRequest") -> Dict[str, Any]:
@@ -268,6 +315,92 @@ class DisplayAgent:
             ),
         }
 
+    # ── Zustandsfortschreibung (Charter §6) ─────────────────────────────────
+
+    def _advance_state(self, options: Dict[str, Any]) -> None:
+        """
+        Schreibt Regime, Anker und Aenderungsliste fort. Wird pro
+        Options-Snapshot aufgerufen, nicht pro HTTP-Abruf.
+        """
+        vorher = self._regime_state.state
+        self._regime_state = self._regime.update(options.get("net_gex_usd"))
+        if self._regime_state.state != vorher and self._regime_state.is_committed:
+            self._changes.record(
+                "regime",
+                f"Regime {vorher} -> {self._regime_state.state}",
+                dedupe_key=self._regime_state.state,
+            )
+
+        self._anchor.update({
+            "spot": options.get("spot"),
+            "net_gex_usd": options.get("net_gex_usd"),
+            "zero_gamma": options.get("zero_gamma"),
+            "put_wall": options.get("put_wall"),
+            "call_wall": options.get("call_wall"),
+            "atm_iv": options.get("atm_iv"),
+        })
+
+        # Charter §4.2: nur die informativen Verschiebungen melden. Eine
+        # Bewegung, die vom Spot kommt, gehoert nicht in die Aenderungsliste —
+        # sonst ist die Liste voll und die eine Meldung, die zaehlt, geht unter.
+        for shift in options.get("chain_shift", []):
+            if not shift.get("is_informative"):
+                continue
+            label = shift.get("label", "?")
+            teile = []
+            zg = shift.get("zero_gamma_informative")
+            if zg:
+                teile.append(f"Zero-Gamma {zg:+,.0f} bei stehendem Spot")
+            if shift.get("call_wall_moved"):
+                teile.append("Call-Wall gewandert")
+            if shift.get("put_wall_moved"):
+                teile.append("Put-Wall gewandert")
+            if teile:
+                self._changes.record(
+                    f"chain_{label}",
+                    f"{label.upper()}: " + ", ".join(teile),
+                    dedupe_key="|".join(teile),
+                )
+
+    def _build_context(self) -> Dict[str, Any]:
+        """Korridor, Ereignisse, Regime und Anker fuer die Pre-Session-Karte."""
+        options = self._last_options or {}
+        agg = self._last_aggregated or {}
+        now = datetime.now(timezone.utc)
+
+        spot = agg.get("mid_price") or options.get("spot")
+        corridor = build_corridor(spot, options.get("atm_iv"), now)
+        events = build_events(now)
+
+        rs = self._regime_state
+        aktuell = {
+            "spot": spot,
+            "net_gex_usd": options.get("net_gex_usd"),
+            "zero_gamma": options.get("zero_gamma"),
+            "put_wall": options.get("put_wall"),
+            "call_wall": options.get("call_wall"),
+            "atm_iv": options.get("atm_iv"),
+        }
+
+        return {
+            "corridor": corridor_to_dict(corridor),
+            "events": events_to_dict(events),
+            "regime": {
+                "state": rs.state,
+                "raw_state": rs.raw_state,
+                "band": rs.band,
+                "pending_state": rs.pending_state,
+                "pending_seconds": round(rs.pending_seconds, 1),
+                "dwell_required": rs.dwell_required,
+                "changed_at": rs.changed_at.isoformat() if rs.changed_at else None,
+                "is_committed": rs.is_committed,
+            },
+            "session_anchor": self._anchor.to_dict(aktuell),
+            "changes": self._changes.entries(),
+            "chain_shift": options.get("chain_shift", []),
+            "limits": LIMITS,
+        }
+
     async def _broadcast(self, data: dict) -> None:
         dead = []
         for ws in self._connections:
@@ -297,6 +430,7 @@ class DisplayAgent:
                 snap = await opt_q.get()
                 payload = snapshot_to_dict(snap)
                 self._last_options = payload
+                self._advance_state(payload)
                 await self._broadcast({"type": "options", **payload})
 
         async def _drain_trades() -> None:
