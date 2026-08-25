@@ -402,3 +402,64 @@ Agents     Agents     Agents     Agent
       │  Heatmap + CVD + Liquidations    │
       │  + Narrator Text + Alerts        │
       └──────────────────────────────────┘
+## Charter-Konsolidierung (2026-08-25) — Stack-Vereinheitlichung
+
+Kanonisches Dokument ist ab hier der Charter ("orderflow-pro als
+Informationssystem"). Bei Widerspruch gilt der Charter, nicht diese Datei.
+
+### Ausgangslage
+Commit 6b4418d hatte den gesamten deterministischen Python-Stack geloescht
+(4 Agents, 22 core-Module, strategies/, tests/, scripts/, infra/) und durch
+einen TypeScript-Stack ersetzt (server.ts + src/core/, Express + ws). Die
+Abschnitte oberhalb beschrieben ab da Module, die es nicht mehr gab.
+
+### Entscheidungen
+1. **Ein Stack: Python/FastAPI.** Der TypeScript-Pfad ist entfernt
+   (server.ts, src/, package.json, tsconfig.json, metadata.json). Charter §2
+   schliesst einen parallelen Stack aus.
+2. **GEX-Skalierung offen.** Charter §8 nennt S^3, der Code rechnet S^2. Die
+   Herleitung steht in docs/GEX_SCALING.md: beide sind richtig, aber zu
+   verschiedenen Gamma-Definitionen. Bis zur Entscheidung bleibt S^2;
+   scripts/gex_scaling_probe.py stellt beide auf einer echten Kette gegenueber.
+3. **Kein LLM im Analysepfad.** agents/signal_agent.py wurde nicht
+   wiederhergestellt, openai ist aus requirements.txt und pyproject.toml raus.
+
+### Struktur (aktuell)
+- main.py — startet exchange, aggregator, options, display, logger
+- agents/display_agent.py — FastAPI + WebSocket; "/" Dashboard, "/risk"
+  Risikoblatt, /risk/state, /risk/evaluate, /options, /history, /metrics,
+  /depth-history
+- agents/options_agent.py — Deribit-Kette, BS-Gamma, GEX, Zero-Gamma, Walls,
+  Expiry-Gruppen, 08:00-UTC-Reversal-Flag, snapshot_to_dict()
+- strategies/geometry.py — Barrier-Mathematik (Portierung aus geometry.ts)
+- strategies/base.py — PropFirmRules, PROP_FIRM_PRESETS, size_position,
+  simulate_challenge (Portierung aus propRules.ts, jetzt einzige Quelle)
+- core/broker.py — beide Subscriber-Formen: subscribe(ch) -> Queue und
+  subscribe(ch, callback)
+
+### Entfernte Ersatzwerte (Charter §2: keine Zahl ohne Datengrundlage)
+- Options-Agent: Default-Spot 64500, iv_atm-Fallback 0.55, unbegrenztes
+  Ketten-Alter (jetzt MAX_CHAIN_AGE_SECONDS = 600 + chain_age_seconds)
+- geometry: RV-Baseline 0.52 -> None bei zu wenig Daten
+- risk.html: erfundene Put-/Call-Wall, Zero-Gamma, POC/VAH/VAL, Expected
+  Moves und Liquidationslevel aus spot * Faktor; Preisachse um 64500 herum;
+  Client-seitige Herleitung des Reversal-Flags statt Serverwahrheit
+  (active === null heisst jetzt "unbestimmt", nicht "inaktiv")
+- Liquidations-"Proxy" aus Hebelstufen entfernt — Charter §4.1 verlangt
+  echte Cluster aus Perp-OI, die es noch nicht gibt
+
+### Offen (Charter §4 und §6, noch nicht gebaut)
+- Impliziter Session-Korridor mit sqrt(Restzeit bis Reset) statt
+  sqrt(Sessionlaenge) (§5)
+- Event-Layer: 08:00 UTC, Weekly, Monthly, Funding-Resets, Prop-Resets (§4.1)
+- Liquidationscluster aus Perp-OI (§4.1)
+- Trennung mechanisch vs. informativ in der Darstellung (§4.2)
+- Hysterese auf den Regime-Zustand, Session-Open-Anker, Aenderungsliste (§6)
+- Endlicher Horizont in der Geometrie: p_timeout ist konstant 0 (§5)
+
+### Ungeloester Konflikt
+static/risk.html enthaelt eine "Structural Proposal Engine"
+(proposeBarriers(), pbtn_*-Knoepfe), die Entry/Stop/Target vorschlaegt.
+Charter §2 schliesst Entry-Vorschlaege aus. Die erfundenen Anker sind
+entfernt und Knoepfe ohne Datengrundlage abgeschaltet, die Funktion selbst
+steht noch — ihr Entfernen ist eine Produktentscheidung.

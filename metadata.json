@@ -1,6 +1,0 @@
-{
-  "name": "OrderFlow Pro",
-  "description": "Real-time BTC/USDT Order Flow terminal and Risikoblatt discretionary trade-management view with Deribit options gamma/GEX, barrier geometry, and prop-firm rules sizing.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

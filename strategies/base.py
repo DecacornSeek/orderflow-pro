@@ -63,6 +63,9 @@ class PropFirmRules:
     btc_price_ref: float         # $105_000 — used for notional sizing
     contract_type: str           # "perpetual" | "cfd"
 
+    # -- Challenge cost ------------------------------------------------------
+    challenge_fee: float = 0.0   # one-off cost of the challenge in dollars
+
     # ------------------------------------------------------------------------
     # Factory methods — canonical configurations
     # ------------------------------------------------------------------------
@@ -75,7 +78,8 @@ class PropFirmRules:
             drawdown_type="static",
             max_leverage=5.0, commission_pct=0.0004, overnight_swap_pct=0.0009,
             min_trading_days=0, consistency_rule_pct=0.0,
-            profit_split_pct=0.80, btc_price_ref=105_000, contract_type="perpetual",
+            profit_split_pct=0.80, challenge_fee=100.0,
+            btc_price_ref=105_000, contract_type="perpetual",
         )
 
     @classmethod
@@ -86,7 +90,8 @@ class PropFirmRules:
             drawdown_type="static",
             max_leverage=5.0, commission_pct=0.0004, overnight_swap_pct=0.0009,
             min_trading_days=0, consistency_rule_pct=0.0,
-            profit_split_pct=0.80, btc_price_ref=105_000, contract_type="perpetual",
+            profit_split_pct=0.80, challenge_fee=200.0,
+            btc_price_ref=105_000, contract_type="perpetual",
         )
 
     @classmethod
@@ -97,7 +102,8 @@ class PropFirmRules:
             drawdown_type="balance",
             max_leverage=50.0, commission_pct=0.0, overnight_swap_pct=0.0,
             min_trading_days=3, consistency_rule_pct=0.60,
-            profit_split_pct=0.80, btc_price_ref=105_000, contract_type="cfd",
+            profit_split_pct=0.80, challenge_fee=100.0,
+            btc_price_ref=105_000, contract_type="cfd",
         )
 
     @classmethod
@@ -108,7 +114,8 @@ class PropFirmRules:
             drawdown_type="balance",
             max_leverage=50.0, commission_pct=0.0, overnight_swap_pct=0.0,
             min_trading_days=3, consistency_rule_pct=0.60,
-            profit_split_pct=0.80, btc_price_ref=105_000, contract_type="cfd",
+            profit_split_pct=0.80, challenge_fee=200.0,
+            btc_price_ref=105_000, contract_type="cfd",
         )
 
     # ------------------------------------------------------------------------
@@ -436,3 +443,195 @@ def simulate_equity_curve(
         })
 
     return pd.DataFrame(data)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 5. Preset-Register + Challenge-Simulation (Port aus src/core/propRules.ts)
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Die TypeScript-Fassung fuehrte eine zweite, eigenstaendige Definition
+# derselben Regeln. Die Zahlen stimmten ueberein, aber zwei Quellen fuer
+# dieselbe harte Grenze sind eine Quelle zu viel — Charter §2 ("kein
+# paralleler Stack"). Hier ist der einzige Ort.
+
+
+PROP_FIRM_PRESETS: Dict[str, PropFirmRules] = {
+    "breakout_10k": PropFirmRules.breakout_10k(),
+    "breakout_25k": PropFirmRules.breakout_25k(),
+    "fundingpips_10k": PropFirmRules.fundingpips_10k(),
+    "fundingpips_25k": PropFirmRules.fundingpips_25k(),
+}
+
+
+def preset_key(rules: PropFirmRules) -> str:
+    """Stabiler Schluessel einer Regelmenge, z.B. 'breakout_10k'."""
+    return f"{rules.firm}_{int(rules.account_size / 1000)}k"
+
+
+def preset_label(rules: PropFirmRules) -> str:
+    """Anzeigename, z.B. 'Breakout 10K'."""
+    firm = "Breakout" if rules.firm == "breakout" else "FundingPips"
+    return f"{firm} {int(rules.account_size / 1000)}K"
+
+
+def rules_to_dict(rules: PropFirmRules) -> Dict[str, object]:
+    """Flache Darstellung fuer die HTTP-Schicht."""
+    return {
+        "key": preset_key(rules),
+        "label": preset_label(rules),
+        "account": rules.account_size,
+        "target": rules.profit_target,
+        "daily_loss_limit": rules.max_daily_loss,
+        "max_drawdown": rules.max_total_drawdown,
+        "drawdown_type": rules.drawdown_type,
+        "max_leverage": rules.max_leverage,
+        "commission_rate": rules.commission_pct,
+        "min_trading_days": rules.min_trading_days,
+        "consistency_rule": rules.consistency_rule_pct,
+        "profit_split": rules.profit_split_pct,
+        "challenge_fee": rules.challenge_fee,
+    }
+
+
+@dataclass(frozen=True)
+class SimulationResult:
+    """Ergebnis der Monte-Carlo-Simulation eines Challenge-Durchlaufs."""
+
+    runs: int
+    pass_count: int
+    pass_pct: float
+    daily_bust_count: int
+    daily_bust_pct: float
+    total_bust_count: int
+    total_bust_pct: float
+    consistency_fail_count: int
+    open_count: int
+    open_pct: float
+    median_days_to_pass: Optional[float]
+    expected_challenge_value_usd: float
+    binding_constraint: str  # "daily_limit" | "max_drawdown" | "no_edge"
+
+
+class _Lcg:
+    """
+    Linearer Kongruenzgenerator mit fester Saat.
+
+    Deterministisch mit Absicht: dieselbe Eingabe muss dieselbe Ausgabe
+    liefern, sonst aendert sich die angezeigte Pass-Wahrscheinlichkeit bei
+    jedem Neuladen und der Nutzer sieht Rauschen als Bewegung.
+    """
+
+    def __init__(self, seed: int = 42) -> None:
+        self._state = seed
+
+    def next(self) -> float:
+        self._state = (self._state * 1103515245 + 12345) & 0x7FFFFFFF
+        return self._state / 0x7FFFFFFF
+
+
+def simulate_challenge(
+    rules: PropFirmRules,
+    p_win: float,
+    rrr: float,
+    risk_usd: float,
+    cost_usd: float,
+    trades_per_day: int = 3,
+    runs: int = 4000,
+    max_days: int = 60,
+) -> SimulationResult:
+    """
+    Simuliert `runs` Challenge-Durchlaeufe unter den harten Regeln der Firma.
+
+    Modelliert werden Daily-Loss-Limit, Max-Drawdown (statisch oder ab
+    High-Water-Mark) und die Consistency-Regel. Charter §2: Prop-Limits sind
+    hart — es gibt keinen weichen Stop, ein Bruch beendet den Durchlauf.
+    """
+    pass_count = 0
+    daily_bust_count = 0
+    total_bust_count = 0
+    consistency_fail_count = 0
+    open_count = 0
+    days_to_pass: List[int] = []
+
+    rnd = _Lcg(42)
+    is_static = rules.drawdown_type == "static"
+
+    for _ in range(runs):
+        equity = rules.account_size
+        peak = rules.account_size
+        day = 0
+        done = False
+        best_day_pnl = 0.0
+
+        while day < max_days and not done:
+            day_start = equity
+            day_pnl = 0.0
+
+            for _ in range(trades_per_day):
+                is_win = rnd.next() < p_win
+                equity += (rrr * risk_usd if is_win else -risk_usd) - cost_usd
+                day_pnl = equity - day_start
+
+                if not is_static:
+                    peak = max(peak, equity)
+                floor = (rules.account_size - rules.max_total_drawdown) if is_static \
+                    else (peak - rules.max_total_drawdown)
+
+                if day_pnl <= -rules.max_daily_loss:
+                    daily_bust_count += 1
+                    done = True
+                    break
+
+                if equity <= floor:
+                    total_bust_count += 1
+                    done = True
+                    break
+
+                if equity - rules.account_size >= rules.profit_target \
+                        and day + 1 >= rules.min_trading_days:
+                    total_profit = equity - rules.account_size
+                    best_day_pnl = max(best_day_pnl, day_pnl)
+                    if rules.consistency_rule_pct > 0.0 \
+                            and best_day_pnl > rules.consistency_rule_pct * total_profit:
+                        consistency_fail_count += 1
+                        done = True
+                        break
+                    pass_count += 1
+                    days_to_pass.append(day + 1)
+                    done = True
+                    break
+
+            if not done:
+                best_day_pnl = max(best_day_pnl, day_pnl)
+                day += 1
+
+        if not done:
+            open_count += 1
+
+    days_to_pass.sort()
+    pass_pct = pass_count / runs * 100.0
+    expected_value = pass_pct / 100.0 * (rules.profit_target * rules.profit_split_pct) \
+        - rules.challenge_fee
+
+    if p_win * rrr - (1.0 - p_win) <= 0.0:
+        binding = "no_edge"
+    elif daily_bust_count > total_bust_count * 1.3:
+        binding = "daily_limit"
+    else:
+        binding = "max_drawdown"
+
+    return SimulationResult(
+        runs=runs,
+        pass_count=pass_count,
+        pass_pct=round(pass_pct, 1),
+        daily_bust_count=daily_bust_count,
+        daily_bust_pct=round(daily_bust_count / runs * 100.0, 1),
+        total_bust_count=total_bust_count,
+        total_bust_pct=round(total_bust_count / runs * 100.0, 1),
+        consistency_fail_count=consistency_fail_count,
+        open_count=open_count,
+        open_pct=round(open_count / runs * 100.0, 1),
+        median_days_to_pass=float(days_to_pass[len(days_to_pass) // 2]) if days_to_pass else None,
+        expected_challenge_value_usd=round(expected_value, 0),
+        binding_constraint=binding,
+    )

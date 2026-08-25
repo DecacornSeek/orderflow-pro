@@ -1239,7 +1239,7 @@
 // ── State Singletons ────────────────────────────────────────────────────────
 let state = null;
 let currentFirmKey = 'breakout_10k';
-let currentSpot = 64500;
+let currentSpot = null;  // bis zum ersten Tick unbekannt — die Anzeige zeigt dann "—"
 let isDraggingBarrier = null;
 
 const numFmt = (n, d=2) => (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -1254,12 +1254,44 @@ const elDrift = document.getElementById('i_drift');
 const elManualP = document.getElementById('i_manual_p');
 const btnResetManualP = document.getElementById('btnResetManualP');
 
+// ── Adapter: Backend-Payload -> Ansicht ─────────────────────────────────────
+// Der Backend-Snapshot laesst unbekannte Groessen bewusst null. Diese Funktion
+// normalisiert nur Einheiten und Verschachtelung — sie fuellt nichts auf.
+function adaptState(data) {
+  const opt = data.options || {};
+  const vol = data.volatility || {};
+
+  const pct = (x) => (x == null ? null : x * 100);
+
+  data.options = {
+    ...opt,
+    // Backend liefert IV/RV als Dezimalwert, die Ansicht rechnet in Prozent
+    atm_iv: pct(opt.atm_iv),
+    realised_vol_annualised: pct(vol.realised_vol_annualised),
+    iv_rv_ratio: vol.iv_rv_ratio ?? null,
+    // Regime-Bezeichner auf die Sprache der Ansicht abbilden
+    gex_regime: opt.gex_regime === 'SHORT_GAMMA' ? 'AMPLIFYING'
+              : opt.gex_regime === 'LONG_GAMMA'  ? 'DAMPENING'
+              : null,
+  };
+
+  // Struktur-Kontext liegt jetzt flach im Zustand statt unter market_structure
+  data.market_structure = {
+    session_context: data.session_context || {},
+    road_map: data.road_map || null,
+    divergence: data.divergence || null,
+    absorption: data.absorption || null,
+  };
+
+  return data;
+}
+
 // ── Polling & WebSockets ────────────────────────────────────────────────────
 async function fetchState() {
   try {
     const res = await fetch('/risk/state');
     if (res.ok) {
-      const data = await res.json();
+      const data = adaptState(await res.json());
       state = data;
       currentSpot = data.spot;
       document.getElementById('liveDot').classList.add('live');
@@ -1296,12 +1328,19 @@ function updateMarketHeader(data) {
   const opt = data.options || {};
   document.getElementById('mSpot').textContent = usd(data.spot, 2);
   
-  const gexVal = opt.net_gex_usd || 0;
-  const gexMio = gexVal / 1000000;
-  const gexRegime = opt.gex_regime || (gexVal < 0 ? 'AMPLIFYING' : 'DAMPENING');
+  // Kein `|| 0`: ein fehlender GEX ist nicht null GEX. Null hiesse "ausgeglichen",
+  // unbekannt heisst "keine Kette" — die Ansicht muss das unterscheiden (Charter §7).
+  const gexVal = (opt.net_gex_usd == null) ? null : opt.net_gex_usd;
+  const gexMio = (gexVal == null) ? null : gexVal / 1000000;
   const gexEl = document.getElementById('mGex');
-  gexEl.textContent = `${gexMio >= 0 ? '+' : ''}${numFmt(gexMio, 2)}M (${gexRegime === 'AMPLIFYING' ? 'Amplifying' : 'Dampening'})`;
-  gexEl.className = 'n ' + (gexVal < 0 ? 'neg' : 'pos');
+  if (gexVal == null) {
+    gexEl.textContent = '— (keine Optionskette)';
+    gexEl.className = 'n';
+  } else {
+    const gexRegime = opt.gex_regime || (gexVal < 0 ? 'AMPLIFYING' : 'DAMPENING');
+    gexEl.textContent = `${gexMio >= 0 ? '+' : ''}${numFmt(gexMio, 2)}M (${gexRegime === 'AMPLIFYING' ? 'Amplifying' : 'Dampening'})`;
+    gexEl.className = 'n ' + (gexVal < 0 ? 'neg' : 'pos');
+  }
 
   document.getElementById('mZeroG').textContent = opt.zero_gamma ? usd(opt.zero_gamma, 0) : '—';
   document.getElementById('mWalls').textContent = `${usd(opt.put_wall, 0)} / ${usd(opt.call_wall, 0)}`;
@@ -1311,12 +1350,13 @@ function updateMarketHeader(data) {
   // Update Orderflow panel
   const cvd = data.cvd || {};
   const ofCvd = document.getElementById('of_cvd');
-  const rolling = cvd.rolling_delta || 0;
-  ofCvd.textContent = `${rolling >= 0 ? '+' : ''}${numFmt(rolling, 2)} BTC`;
-  ofCvd.className = 'v ' + (rolling >= 0 ? 'pos' : 'neg');
+  const rolling = cvd.rolling_delta ?? null;
+  ofCvd.textContent = (rolling == null) ? '—' : `${rolling >= 0 ? '+' : ''}${numFmt(rolling, 2)} BTC`;
+  ofCvd.className = 'v ' + (rolling == null ? '' : (rolling >= 0 ? 'pos' : 'neg'));
 
   const ob = data.orderbook || {};
-  document.getElementById('of_imb').textContent = `${numFmt((ob.imbalance_5 || 0) * 100, 1)}% (5x) · ${numFmt((ob.imbalance_20 || 0) * 100, 1)}% (20x)`;
+  const imb = (x) => (x == null ? '—' : `${numFmt(x * 100, 1)}%`);
+  document.getElementById('of_imb').textContent = `${imb(ob.imbalance_5)} (5x) · ${imb(ob.imbalance_20)} (20x)`;
 
   const ms = data.market_structure || {};
   document.getElementById('of_absorp').textContent = ms.absorption ? 'Passive Absorption Detected' : 'No Absorption';
@@ -1333,24 +1373,45 @@ function updateMarketHeader(data) {
   // Finance Research Letters 107, doi:10.1016/j.frl.2026.110340
   // STRICT EMPIRICAL RULE: Requires BOTH Top-Decile ATM OI (>= $109.2M or 90th percentile)
   // AND Negative Net Gamma (Net GEX < 0, Dealers Short Gamma) at 07:00 UTC.
-  const expFlag = opt.expiry_reversal_flag || {};
-  const atmOiUsd = opt.atm_oi_usd || 0;
-  const atmOiMio = atmOiUsd / 1e6;
-  const isTopDecileOi = Boolean(expFlag.is_top_decile_oi ?? (atmOiUsd >= 109_200_000));
-  const isNegativeGamma = Boolean(expFlag.is_negative_gamma ?? (gexVal < 0));
+  // Der Server entscheidet ueber das Flag, nicht die Ansicht. active === null
+  // heisst: weniger als 60 Tage ATM-OI-Historie, also kein Dezil bestimmbar —
+  // das ist "unbestimmt", nicht "inaktiv" (Charter §3).
+  const expFlag = opt.expiry_reversal_flag || null;
+  const flagUndetermined = (expFlag == null) || (expFlag.active === null);
+  const atmOiBtc = expFlag ? expFlag.atm_oi_0dte : null;
+  const atmOiUsd = (atmOiBtc != null && data.spot != null) ? atmOiBtc * data.spot : null;
+  const atmOiMio = (atmOiUsd == null) ? null : atmOiUsd / 1e6;
+  const isTopDecileOi = Boolean(expFlag && expFlag.top_decile_threshold != null
+                                && atmOiBtc != null
+                                && atmOiBtc >= expFlag.top_decile_threshold);
+  const isNegativeGamma = Boolean(expFlag && expFlag.net_gex_0dte != null && expFlag.net_gex_0dte < 0);
   const now = new Date();
   const utcHour = now.getUTCHours();
   const utcMin = now.getUTCMinutes();
   const isTimeWindow = (utcHour === 7) || (utcHour >= 8 && utcHour < 10);
   
   // Strict dual condition requirement: MUST satisfy BOTH
-  const dualConditionMet = isTopDecileOi && isNegativeGamma;
+  const dualConditionMet = (expFlag != null) && (expFlag.active === true);
 
   const flagBox = document.getElementById('expiryFlagBox');
   const flagTitle = document.getElementById('expiryFlagTitle');
   const detailsEl = document.getElementById('expiryResearchDetails');
 
-  if (dualConditionMet && isTimeWindow) {
+  if (flagUndetermined) {
+    // Kein Ersatzwert und keine Client-Herleitung: ohne Dezil-Basis ist die
+    // Bedingung schlicht nicht pruefbar, und das gehoert so hingeschrieben.
+    flagBox.className = 'flag info';
+    flagTitle.innerHTML = `08:00 UTC Deribit Expiry Context: Unbestimmt`;
+    const have = expFlag ? expFlag.history_count : 0;
+    const need = expFlag ? expFlag.history_required : 60;
+    detailsEl.innerHTML = `
+      <div><strong>Nicht pruefbar:</strong> ${expFlag ? `${have} von ${need} Tagen ATM-OI-Historie erfasst` : 'keine Optionskette verfuegbar'}.
+      Ohne diese Basis laesst sich das oberste OI-Dezil nicht bestimmen, und ohne Dezil ist die empirische Bedingung nicht definiert.</div>
+      <div style="margin-top: 4px; color: var(--ink2); font-size: 10px;">
+        <em>Das Flag bleibt dunkel, bis alle drei Bedingungen pruefbar und erfuellt sind. Es leuchtet selten — das ist beabsichtigt.</em>
+      </div>
+    `;
+  } else if (dualConditionMet && isTimeWindow) {
     flagBox.className = 'flag danger';
     flagTitle.innerHTML = `⚠️ 08:00 UTC Expiry Context: DUAL CONDITION ACTIVE (${utcHour === 7 ? 'Pre-Settlement Drift 07:00–08:00 UTC' : 'Post-Settlement Reversal Window 08:00–10:00 UTC'})`;
     detailsEl.innerHTML = `
@@ -1607,9 +1668,17 @@ function renderPriceAxis() {
   const h = svg.clientHeight || 780;
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
 
-  const spot = state.spot || 64500;
+  const spot = state.spot ?? null;
+  if (spot == null) {
+    svg.innerHTML = `<text x="${w / 2}" y="${h / 2}" fill="#54666F" font-size="11"
+      font-family="IBM Plex Sans Condensed" text-anchor="middle">Warte auf Marktdaten …</text>`;
+    return;
+  }
   const opt = state.options || {};
-  const expMove = opt.expected_move_weekly || spot * 0.05;
+  // Ohne Expected Move faellt die Achse auf eine reine Preisspanne zurueck;
+  // die Sigma-Baender werden dann schlicht nicht gezeichnet.
+  const expMove = opt.expected_move_weekly ?? spot * 0.05;
+  const hasExpMove = opt.expected_move_weekly != null;
 
   // Span ±1.5 expected moves around spot
   const minP = Math.floor((spot - expMove * 1.5) / 100) * 100;
@@ -1645,9 +1714,21 @@ function renderPriceAxis() {
   svgHtml += `<line x1="0" y1="${yEm0Low}" x2="${w}" y2="${yEm0Low}" stroke="#9BAAB1" stroke-width="1" stroke-dasharray="4 2" />`;
   svgHtml += `<text x="6" y="${yEm0High + 10}" fill="#54666F" font-size="8" font-family="IBM Plex Sans Condensed">+1σ 0DTE</text>`;
   svgHtml += `<text x="6" y="${yEm0Low - 4}" fill="#54666F" font-size="8" font-family="IBM Plex Sans Condensed">−1σ 0DTE</text>`;
+  if (!hasExpMove) {
+    svgHtml += `<text x="6" y="${h - 6}" fill="#54666F" font-size="8" font-family="IBM Plex Sans Condensed">Achsenspanne geschaetzt — kein Expected Move aus der Kette</text>`;
+  }
 
   // 3. Option Clusters (Bars on Left)
-  const clusters = opt.top_clusters || [];
+  // Strikes der 0DTE-Gruppe, auf Strike-Ebene zu Call+Put zusammengefasst
+  const zeroDte = (opt.expiries || []).find(e => e.label === '0dte');
+  const byStrike = new Map();
+  (zeroDte ? zeroDte.strikes : []).forEach(s => {
+    const cur = byStrike.get(s.strike) || { strike: s.strike, total_oi: 0, net_gex: 0 };
+    cur.total_oi += s.open_interest;
+    cur.net_gex += s.gex_usd;
+    byStrike.set(s.strike, cur);
+  });
+  const clusters = [...byStrike.values()].sort((a, b) => b.total_oi - a.total_oi).slice(0, 24);
   const maxOi = Math.max(1, ...clusters.map(c => c.total_oi || 1));
   const gexBarMaxW = w * 0.35;
 
@@ -1685,8 +1766,9 @@ function renderPriceAxis() {
     svgHtml += `<text x="${w * 0.42}" y="${yPoc - 3}" fill="#1A5480" font-size="8" font-family="IBM Plex Sans Condensed" font-weight="700">POC ${usd(msContext.session_poc, 0)}</text>`;
   }
 
-  // 5. Liquidation Proxies (Longs & Shorts)
-  const liq = state.liquidation_proxy || {};
+  // 5. Liquidationscluster — erst wenn Perp-OI je Preisniveau vorliegt
+  //    (Charter §4.1). Bis dahin wird nichts gezeichnet.
+  const liq = state.liquidations || {};
   const longLiqs = liq.long_liquidations || [];
   const shortLiqs = liq.short_liquidations || [];
 
@@ -1763,28 +1845,30 @@ let selectedMenuPrice = 64500;
 let selectedMenuLabel = 'Axis Level';
 
 function getStructuralLevels() {
-  if (!state) return { spot: 64500 };
-  const spot = state.spot || 64500;
+  // Jede Marke ist entweder gemessen oder null. Die frueheren Fallbacks
+  // (spot * 0.96 als Put-Wall, spot * 0.995 als Zero-Gamma, Hebelstufen als
+  // Liquidationslevel) erzeugten Marken, die im UI nicht von echten zu
+  // unterscheiden waren — und auf die der Trader Stops gesetzt haette.
+  // Charter §2: keine Zahl ohne Datengrundlage.
+  if (!state) return { spot: null };
+  const spot = state.spot ?? null;
   const opt = state.options || {};
   const ms = state.market_structure || {};
   const msCtx = ms.session_context || {};
-  const liq = state.liquidation_proxy || {};
-  const longLiqs = liq.long_liquidations || [];
-  const shortLiqs = liq.short_liquidations || [];
 
-  const putWall = opt.put_wall || Math.round((spot * 0.96) / 100) * 100;
-  const callWall = opt.call_wall || Math.round((spot * 1.04) / 100) * 100;
-  const zeroG = opt.zero_gamma || Math.round((spot * 0.995) / 100) * 100;
-  const poc = msCtx.session_poc || Math.round((spot * 0.998) / 100) * 100;
-  const vah = msCtx.session_value_area_high || Math.round((spot * 1.015) / 100) * 100;
-  const val = msCtx.session_value_area_low || Math.round((spot * 0.985) / 100) * 100;
-  const em0 = opt.expected_move_0dte || Math.round(spot * 0.012);
-  const em7 = opt.expected_move_weekly || Math.round(spot * 0.045);
+  const putWall = opt.put_wall ?? null;
+  const callWall = opt.call_wall ?? null;
+  const zeroG = opt.zero_gamma ?? null;
+  const poc = msCtx.session_poc ?? null;
+  const vah = msCtx.session_value_area_high ?? null;
+  const val = msCtx.session_value_area_low ?? null;
+  const em0 = opt.expected_move_0dte ?? null;
+  const em7 = opt.expected_move_weekly ?? null;
 
-  const liq50Long = longLiqs.find(l => l.label && l.label.includes('50x'))?.price || Math.round((spot * 0.988) / 25) * 25;
-  const liq50Short = shortLiqs.find(l => l.label && l.label.includes('50x'))?.price || Math.round((spot * 1.012) / 25) * 25;
-  const liq25Long = longLiqs.find(l => l.label && l.label.includes('25x'))?.price || Math.round((spot * 0.975) / 25) * 25;
-  const liq25Short = shortLiqs.find(l => l.label && l.label.includes('25x'))?.price || Math.round((spot * 1.025) / 25) * 25;
+  // Echte Liquidationscluster verlangen Perp-OI je Preisniveau (Charter §4.1).
+  // Bis dahin gibt es hier nichts — die Hebelstufen um den Spot herum waren
+  // eine geometrische Konstruktion, kein beobachteter Cluster.
+  const liq50Long = null, liq50Short = null, liq25Long = null, liq25Short = null;
 
   return {
     spot,
@@ -1805,25 +1889,41 @@ function getStructuralLevels() {
 
 function updateProposalButtonsUI() {
   const lv = getStructuralLevels();
-  const round25 = (val) => Math.round(val / 25) * 25;
+  const round25 = (v) => (v == null ? null : Math.round(v / 25) * 25);
 
-  const setSub = (id, text) => {
+  // Ein Knopf, dessen Anker fehlt, wird abgeschaltet statt mit einer
+  // erfundenen Marke beschriftet.
+  const setSub = (id, text, available) => {
     const el = document.getElementById(id);
     if (el) el.textContent = text;
+    const btn = el ? el.closest('button') : null;
+    if (btn) {
+      btn.disabled = !available;
+      btn.style.opacity = available ? '' : '0.45';
+      btn.style.cursor = available ? '' : 'not-allowed';
+      if (!available) btn.title = 'Anker-Level nicht verfuegbar';
+    }
   };
 
-  const putStop = round25(lv.putWall * 0.9965);
-  const callStop = round25(lv.callWall * 1.0035);
-  const zgStop = round25(lv.val || lv.zeroG * 0.994);
-  const liqLStop = round25(lv.liq50Long * 0.9965);
-  const liqSStop = round25(lv.liq50Short * 1.0035);
+  const line = (anchor, stop, labelA, labelB) =>
+    (anchor == null) ? `${labelA} nicht verfuegbar`
+                     : `Entry @ ${usd(anchor)} · ${labelB} ${usd(stop)}`;
 
-  setSub('pbtn_put_sub', `Entry @ ${usd(lv.putWall)} · Stop ${usd(putStop)}`);
-  setSub('pbtn_call_sub', `Entry @ ${usd(lv.callWall)} · Stop ${usd(callStop)}`);
-  setSub('pbtn_zerog_sub', `Entry @ ${usd(lv.zeroG)} · Stop ${usd(zgStop)}`);
-  setSub('pbtn_liq_l_sub', `Entry @ ${usd(lv.liq50Long)} · Stop ${usd(liqLStop)}`);
-  setSub('pbtn_liq_s_sub', `Entry @ ${usd(lv.liq50Short)} · Stop ${usd(liqSStop)}`);
-  setSub('pbtn_va_sub', `Entry @ ${usd(lv.val)} (VAL) · Tgt ${usd(lv.vah)} (VAH)`);
+  setSub('pbtn_put_sub',
+    line(lv.putWall, round25(lv.putWall == null ? null : lv.putWall * 0.9965), 'Put-Wall', 'Stop'),
+    lv.putWall != null);
+  setSub('pbtn_call_sub',
+    line(lv.callWall, round25(lv.callWall == null ? null : lv.callWall * 1.0035), 'Call-Wall', 'Stop'),
+    lv.callWall != null);
+  setSub('pbtn_zerog_sub',
+    line(lv.zeroG, round25(lv.val ?? (lv.zeroG == null ? null : lv.zeroG * 0.994)), 'Zero-Gamma', 'Stop'),
+    lv.zeroG != null);
+  setSub('pbtn_liq_l_sub', 'Liquidationscluster nicht verfuegbar', false);
+  setSub('pbtn_liq_s_sub', 'Liquidationscluster nicht verfuegbar', false);
+  setSub('pbtn_va_sub',
+    (lv.val == null || lv.vah == null) ? 'Value Area nicht verfuegbar'
+      : `Entry @ ${usd(lv.val)} (VAL) · Tgt ${usd(lv.vah)} (VAH)`,
+    lv.val != null && lv.vah != null);
 }
 
 function proposeBarriers(type) {
@@ -1972,8 +2072,9 @@ function initAxisDrag() {
   function getPriceFromY(clientY) {
     const rect = wrap.getBoundingClientRect();
     const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
-    const spot = state?.spot || 64500;
-    const expMove = state?.options?.expected_move_weekly || spot * 0.05;
+    const spot = state?.spot ?? null;
+    if (spot == null) return null;
+    const expMove = state?.options?.expected_move_weekly ?? spot * 0.05;
     const minP = Math.floor((spot - expMove * 1.5) / 100) * 100;
     const maxP = Math.ceil((spot + expMove * 1.5) / 100) * 100;
     return Math.round((maxP - (y / rect.height) * (maxP - minP)) / 25) * 25;

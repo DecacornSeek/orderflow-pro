@@ -445,6 +445,7 @@ class HistoryManager:
     """Verwaltet und persistiert die 07:00 UTC ATM-OI Historie fuer das Top-Dezil."""
 
     def __init__(self, filepath: Path = ATM_OI_HISTORY_FILE) -> None:
+        filepath = Path(filepath)  # akzeptiert auch str
         self.filepath = filepath
         self._history: Dict[str, float] = {}  # date_str -> atm_oi_btc
         self._load()
@@ -742,3 +743,86 @@ async def run(broker: Broker, shutdown: asyncio.Event) -> None:
             await asyncio.sleep(5.0)
     
     logger.info("OptionsAgent beendet.")
+
+
+# ── Serialisierung fuer die HTTP-/WebSocket-Schicht ───────────────────────────
+
+def expiry_to_dict(eg: ExpiryGamma) -> Dict[str, Any]:
+    """Flache Darstellung einer Verfallsgruppe. None bleibt None."""
+    return {
+        "label": eg.label,
+        "expiry": eg.expiry.isoformat(),
+        "days_to_expiry": round(eg.t_years * 365.0, 3),
+        "net_gex_usd": eg.net_gex,
+        "gex_regime": "SHORT_GAMMA" if eg.net_gex < 0 else "LONG_GAMMA",
+        "zero_gamma": eg.zero_gamma,
+        "put_wall": eg.put_wall,
+        "call_wall": eg.call_wall,
+        "atm_oi_btc": eg.atm_oi,
+        "atm_iv": eg.iv_atm,
+        "expected_move": eg.expected_move,
+        "strike_count": len(eg.strikes),
+        "strikes": [
+            {
+                "strike": s.strike,
+                "type": s.option_type,
+                "open_interest": s.open_interest,
+                "iv": s.mark_iv,
+                "gex_usd": s.gex_usd,
+            }
+            for s in eg.strikes
+        ],
+    }
+
+
+def snapshot_to_dict(snap: OptionsSnapshot) -> Dict[str, Any]:
+    """
+    Serialisiert einen OptionsSnapshot fuer Frontend und HTTP.
+
+    Unbekannte Groessen bleiben None und werden nicht durch Ersatzwerte
+    ersetzt (Charter §2). Die Anzeige hat den Leerzustand darzustellen.
+    """
+    by_label = {eg.label: eg for eg in snap.expiries}
+    zero_dte = by_label.get("0dte")
+    weekly = by_label.get("weekly")
+
+    total_net_gex = sum(eg.net_gex for eg in snap.expiries)
+
+    flag = snap.reversal_flag
+    flag_dict: Optional[Dict[str, Any]] = None
+    if flag is not None:
+        flag_dict = {
+            "active": flag.active,
+            "atm_oi_0dte": flag.atm_oi_0dte,
+            "net_gex_0dte": flag.net_gex_0dte,
+            "top_decile_threshold": flag.top_decile_threshold,
+            "history_count": flag.history_count,
+            "history_required": MIN_HISTORY_FOR_EXPIRY_DECILE,
+            "headline": "08:00 UTC Deribit-Verfall Reversal (Weiss et al. 2026)",
+            "caveats": list(flag.caveats),
+        }
+
+    return {
+        "timestamp": int(snap.ts.timestamp() * 1000),
+        "chain_timestamp": int(snap.chain_ts.timestamp() * 1000),
+        "chain_age_seconds": round(snap.chain_age_seconds, 1),
+        "stale": snap.stale,
+        "spot": snap.spot,
+        "source": "deribit",
+        "skipped_instruments": snap.skipped_instruments,
+        "total_oi_btc": sum(eg.atm_oi for eg in snap.expiries),
+        "net_gex_usd": total_net_gex,
+        "gex_regime": "SHORT_GAMMA" if total_net_gex < 0 else "LONG_GAMMA",
+        # Die 0DTE-Gruppe traegt die Level, an denen intraday gehedged wird.
+        "zero_gamma": zero_dte.zero_gamma if zero_dte else None,
+        "put_wall": zero_dte.put_wall if zero_dte else None,
+        "call_wall": zero_dte.call_wall if zero_dte else None,
+        "atm_iv": zero_dte.iv_atm if zero_dte else None,
+        "expected_move_0dte": zero_dte.expected_move if zero_dte else None,
+        "expected_move_weekly": weekly.expected_move if weekly else None,
+        "expiries": [expiry_to_dict(eg) for eg in snap.expiries],
+        "expiry_reversal_flag": flag_dict,
+        # Nicht gerechnet: Max Pain steht nicht in Charter §4.1 und wuerde ohne
+        # Payoff-Aggregation ueber die ganze Kette nur geschaetzt werden.
+        "max_pain": None,
+    }
