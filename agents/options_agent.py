@@ -41,6 +41,10 @@ DERIBIT_BOOK_SUMMARY_URL = (
 EXPIRY_FLOOR_SECONDS = 900.0
 SECONDS_PER_YEAR = 31_536_000.0  # 365 * 86400
 
+# Ab diesem Ketten-Alter wird nichts mehr angezeigt (Charter §2: keine Zahl
+# ohne Datengrundlage). Darunter: letzter echter Snapshot mit sichtbarem Alter.
+MAX_CHAIN_AGE_SECONDS = 600.0
+
 # Persistenzpfad fuer historisches 07:00 UTC ATM-OI (Top-Dezil-Klassifikation)
 DATA_DIR = Path("data")
 ATM_OI_HISTORY_FILE = DATA_DIR / "options_atm_oi_history.json"
@@ -95,7 +99,8 @@ class ExpiryGamma:
     put_wall: Optional[float]    # Strike mit maximalem Put-OI unterhalb Spot
     call_wall: Optional[float]   # Strike mit maximalem Call-OI oberhalb Spot
     atm_oi: float             # Summe Call+Put OI innerhalb +/-2.5% um Spot (in BTC)
-    expected_move: float      # S * iv_atm * sqrt(T_years)
+    expected_move: Optional[float]  # S * iv_atm * sqrt(T_years); None wenn keine IV messbar
+    iv_atm: Optional[float] = None  # ATM Mark-IV als Dezimalwert; None wenn nicht messbar
 
 
 @dataclass(frozen=True)
@@ -128,6 +133,7 @@ class OptionsSnapshot:
     expiries: tuple[ExpiryGamma, ...]
     skipped_instruments: int  # Anzahl uebersprungener/unparsbarer Instrumente
     reversal_flag: Optional[ExpiryReversalFlag] = None
+    chain_age_seconds: float = 0.0  # Alter der zugrunde liegenden Kette in Sekunden
 
 
 # ── Parsing- und Rechenfunktionen ─────────────────────────────────────────────
@@ -329,15 +335,18 @@ def calculate_aggregates(
         elif opt_type == "C" and strike > spot:
             call_oi_above[strike] = call_oi_above.get(strike, 0.0) + oi
     
-    # Fallback fuer ATM IV falls keine Strikes in 5% Band
+    # ATM IV: gewichtetes Mittel im 5%-Band, sonst naechstgelegener Strike.
+    # Gibt es ueberhaupt keinen verwertbaren Strike, bleibt die IV unbekannt —
+    # es wird kein Ersatzwert gesetzt (Charter §2), und der Expected Move
+    # damit None statt einer Zahl ohne Grundlage.
+    iv_atm: Optional[float]
     if sum_atm_weight > 0.0:
         iv_atm = sum_atm_iv_weight / sum_atm_weight
     elif strikes_list:
-        # Nimm den naechstgelegenen Strike
         closest = min(strikes_list, key=lambda s: abs(s.strike - spot))
         iv_atm = closest.mark_iv
     else:
-        iv_atm = 0.55
+        iv_atm = None
     
     net_gex = sum(s.gex_usd for s in strikes_list)
     zero_gamma = calculate_zero_gamma(strikes_list)
@@ -348,8 +357,8 @@ def calculate_aggregates(
     # Call Wall: Maximum Call OI oberhalb Spot
     call_wall = max(call_oi_above.items(), key=lambda x: x[1])[0] if call_oi_above else None
     
-    # Expected Move: S * iv_atm * sqrt(T_years)
-    expected_move = spot * iv_atm * math.sqrt(t_years)
+    # Expected Move: S * iv_atm * sqrt(T_years) — nur bei bekannter IV
+    expected_move = spot * iv_atm * math.sqrt(t_years) if iv_atm is not None else None
     
     expiry_gamma = ExpiryGamma(
         expiry=expiry_dt,
@@ -361,7 +370,8 @@ def calculate_aggregates(
         put_wall=put_wall,
         call_wall=call_wall,
         atm_oi=float(atm_oi_btc),
-        expected_move=float(expected_move)
+        expected_move=float(expected_move) if expected_move is not None else None,
+        iv_atm=float(iv_atm) if iv_atm is not None else None
     )
     
     return expiry_gamma, skipped
@@ -545,7 +555,9 @@ class OptionsAgent:
         
         self._raw_chain: List[Dict[str, Any]] = []
         self._chain_ts: datetime = datetime.now(timezone.utc)
-        self._current_spot: float = 64500.0
+        # Kein Default-Spot: bis zum ersten Tick ist der Spot unbekannt, und ein
+        # erfundener Spot wuerde eine vollstaendige, falsche Karte erzeugen.
+        self._current_spot: float = 0.0
         self._last_snapshot: Optional[OptionsSnapshot] = None
         self._stale: bool = True
         self._fetch_lock = asyncio.Lock()
@@ -567,18 +579,32 @@ class OptionsAgent:
         if now_utc is None:
             now_utc = datetime.now(timezone.utc)
         
+        chain_age = max(0.0, (now_utc - self._chain_ts).total_seconds())
+        
         if not self._raw_chain:
-            if self._last_snapshot:
-                # Markiere als stale mit altem Timestamp
-                stale_snap = dataclasses.replace(
+            # Letzter echter Snapshot mit sichtbarem Alter — aber nur solange er
+            # nicht ueberaltert ist. Danach Leerzustand statt einer Karte, die
+            # aussieht wie Marktzustand, aber Vergangenheit zeigt (Charter §2).
+            if self._last_snapshot and chain_age <= MAX_CHAIN_AGE_SECONDS:
+                return dataclasses.replace(
                     self._last_snapshot,
                     ts=now_utc,
-                    stale=True
+                    stale=True,
+                    chain_age_seconds=chain_age
                 )
-                return stale_snap
+            if self._last_snapshot:
+                _throttled_warn(
+                    "chain_expired",
+                    f"Optionskette {chain_age:.0f}s alt (Limit {MAX_CHAIN_AGE_SECONDS:.0f}s) — "
+                    "kein Snapshot, Anzeige bleibt leer."
+                )
             return None
         
         spot = self._current_spot
+        if spot <= 0.0:
+            # Noch kein Spot-Tick empfangen. Ohne Spot ist kein Gamma rechenbar.
+            _throttled_warn("no_spot", "Noch kein Spot-Tick empfangen — Options-Snapshot ausgesetzt.")
+            return None
         parsed_by_expiry: Dict[datetime, List[Dict[str, Any]]] = {}
         total_skipped = 0
         
@@ -634,7 +660,8 @@ class OptionsAgent:
             stale=self._stale,
             expiries=tuple(expiry_gammas),
             skipped_instruments=total_skipped,
-            reversal_flag=flag
+            reversal_flag=flag,
+            chain_age_seconds=chain_age
         )
         return snapshot
 
