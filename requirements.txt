@@ -1,0 +1,7 @@
+ccxt[pro]
+fastapi
+uvicorn[standard]
+rich
+pandas
+pyarrow
+requests

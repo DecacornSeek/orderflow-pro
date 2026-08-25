@@ -1,0 +1,35 @@
+[project]
+name = "orderflow-pro"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "ccxt[pro]",
+    "fastapi",
+    "uvicorn[standard]",
+    "rich",
+    "pandas",
+    "pyarrow",
+    "requests",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Die Agent-Tests sind async und tragen keine expliziten Marker.
+asyncio_mode = "auto"
+# test_sprint1.py spricht beim Sammeln die Live-Binance-API an und ist damit
+# kein Unit-Test. Explizit anfordern mit: pytest tests/test_sprint1.py
+addopts = "--ignore=tests/test_sprint1.py"
