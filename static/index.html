@@ -61,6 +61,7 @@ body {
 
 <div id="hdr">
   <span id="hdr-title">⬡ BTC / USDT</span>
+  <a href="/risk" style="color:#58a6ff; font-size:11px; text-decoration:none; border:1px solid #30363d; padding:3px 8px; border-radius:4px; font-weight:600; background:#161b22;">📊 BTC Risk Sheet</a>
   <div class="m"><span class="ml">Preis</span><span class="mv" id="v-price" style="color:#e6edf3">---</span></div>
   <div class="m"><span class="ml">CVD Rolling</span><span class="mv" id="v-cvd">---</span></div>
   <div class="m"><span class="ml">Imbalance ×5</span><span class="mv" id="v-imb5">---</span></div>
@@ -259,7 +260,8 @@ async function loadHistory() {
 function connect() {
   const dot   = document.getElementById('dot');
   const label = document.getElementById('conn-label');
-  const ws    = new WebSocket('ws://localhost:8000/ws');
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws    = new WebSocket(`${proto}//${window.location.host}/ws`);
 
   ws.onopen = () => {
     dot.classList.add('live');

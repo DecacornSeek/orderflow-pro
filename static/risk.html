@@ -1,0 +1,2249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTC Risk Sheet · Discretionary Trade Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #D6DCDF;
+    --panel: #E5EAEC;
+    --panel-hover: #DDE3E6;
+    --ink: #0F1A21;
+    --ink2: #54666F;
+    --rule: #9BAAB1;
+    --rule2: #BFCACE;
+    --red: #9E2B14;
+    --red-subtle: rgba(158, 43, 20, 0.12);
+    --green: #1B6046;
+    --green-subtle: rgba(27, 96, 70, 0.12);
+    --amber: #A87722;
+    --blue: #1A5480;
+    --purple: #6A388C;
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+    --cond: 'IBM Plex Sans Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sheet {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 16px 20px 48px;
+  }
+
+  /* Header */
+  header {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 16px;
+    justify-content: space-between;
+  }
+  .h-left { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 24px;
+    letter-spacing: -.01em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .nav-btn {
+    font-family: var(--cond);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink);
+    text-decoration: none;
+    padding: 4px 10px;
+    border: 1px solid var(--rule);
+    background: var(--panel);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+  }
+  .nav-btn:hover {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .sub {
+    color: var(--ink2);
+    font-size: 10.5px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+  .h-right { display: flex; align-items: center; gap: 12px; }
+  #verdict {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border: 1.5px solid var(--ink);
+    white-space: nowrap;
+    background: var(--panel);
+  }
+  #conn-badge {
+    font-family: var(--cond);
+    font-size: 10px;
+    letter-spacing: .08em;
+    color: var(--ink2);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-transform: uppercase;
+  }
+  .dot { width: 7px; height: 7px; background: var(--amber); }
+  .dot.live { background: var(--green); }
+
+  /* Top Market Strip */
+  .mkt {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1px;
+    background: var(--rule2);
+    border: 1px solid var(--rule2);
+    margin-top: 14px;
+  }
+  @media(max-width: 960px) { .mkt { grid-template-columns: repeat(3, 1fr); } }
+  @media(max-width: 580px) { .mkt { grid-template-columns: repeat(2, 1fr); } }
+  .mkt div { background: var(--panel); padding: 8px 10px; }
+  .mkt .l { font-family: var(--cond); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink2); }
+  .mkt .n { font-weight: 700; font-size: 13.5px; margin-top: 2px; }
+
+  /* Main Grid */
+  .layout-grid {
+    display: grid;
+    grid-template-columns: 390px 1fr;
+    gap: 20px;
+    margin-top: 16px;
+  }
+  @media(max-width: 1100px) {
+    .layout-grid { grid-template-columns: 1fr; }
+  }
+
+  .cap {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    padding-bottom: 5px;
+    border-bottom: 1.5px solid var(--ink);
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .cap small { font-weight: normal; color: var(--ink2); text-transform: none; letter-spacing: 0; }
+
+  /* ── LEFT: PRICE AXIS (CENTERPIECE) ── */
+  .axis-container {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: 12px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .axis-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 9.5px;
+    color: var(--ink2);
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule2);
+  }
+  .axis-legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .axis-legend i { display: inline-block; width: 8px; height: 8px; }
+  
+  .axis-canvas-wrap {
+    position: relative;
+    height: 780px;
+    width: 100%;
+    background: #eef2f3;
+    border: 1px solid var(--rule2);
+    overflow: hidden;
+    user-select: none;
+    cursor: crosshair;
+  }
+  #axisSvg {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
+  }
+
+  .axis-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--ink);
+    color: #fff;
+    padding: 4px 8px;
+    font-size: 10px;
+    font-family: var(--mono);
+    border-radius: 0;
+    z-index: 50;
+    display: none;
+    white-space: nowrap;
+  }
+
+  /* Right Content Panels */
+  .panels-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  /* 2-Col Panels */
+  .cols-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  @media(max-width: 860px) { .cols-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: 14px;
+  }
+
+  .firms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .firms button {
+    font-family: var(--cond);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--rule);
+    padding: 4px 9px;
+    cursor: pointer;
+    transition: all 0.1s ease;
+  }
+  .firms button:hover {
+    background: var(--panel-hover);
+  }
+  .firms button.on {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+
+  .ctl { margin-bottom: 11px; }
+  .ctlhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+  .ctlhead label { font-family: var(--cond); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink2); }
+  .val { font-weight: 600; font-size: 12.5px; }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 14px;
+    background: transparent;
+    cursor: pointer;
+    margin: 0;
+    display: block;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--rule); }
+  input[type=range]::-moz-range-track { height: 2px; background: var(--rule); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--ink);
+    border: 0;
+    margin-top: -5px;
+    border-radius: 0;
+    transform: rotate(45deg);
+  }
+  input[type=range]::-moz-range-thumb { width: 12px; height: 12px; background: var(--ink); border: 0; border-radius: 0; }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--rule2);
+  }
+  .row .k { font-family: var(--cond); font-size: 11.5px; letter-spacing: .04em; color: var(--ink2); }
+  .row .v { font-weight: 600; }
+  .row.big {
+    padding: 10px 0;
+    border-bottom: 2px solid var(--ink);
+    border-top: 1px solid var(--rule2);
+    margin-top: 4px;
+  }
+  .row.big .k { font-weight: 700; color: var(--ink); letter-spacing: .1em; text-transform: uppercase; font-size: 12px; }
+  .row.big .v { font-family: var(--cond); font-weight: 700; font-size: 28px; line-height: 1; }
+
+  .neg { color: var(--red); }
+  .pos { color: var(--green); }
+  .warn { color: var(--amber); }
+
+  /* Outcome Bar (Monte Carlo) */
+  #outcome {
+    display: flex;
+    height: 36px;
+    border: 1px solid var(--rule);
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  #outcome div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 11.5px;
+    color: #fff;
+    transition: flex-basis .2s ease;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .oPass { background: var(--green); }
+  .oDaily { background: var(--red); }
+  .oTotal { background: #6B1D0E; }
+  .oOpen { background: var(--rule); }
+  .okey {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--ink2);
+  }
+  .okey i { display: inline-block; width: 8px; height: 8px; margin-right: 4px; vertical-align: middle; }
+
+  /* 3-cell metric summary */
+  .slist {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--rule2);
+    border: 1px solid var(--rule2);
+    margin-top: 10px;
+  }
+  @media(max-width: 760px) { .slist { grid-template-columns: 1fr; } }
+  .scell { background: var(--panel); padding: 10px 12px; }
+  .scell .lab { font-family: var(--cond); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink2); margin-bottom: 4px; }
+  .scell .num { font-family: var(--cond); font-weight: 700; font-size: 20px; line-height: 1.1; }
+  .scell .note { font-size: 10px; color: var(--ink2); margin-top: 4px; line-height: 1.35; }
+
+  /* Loss Buffer Ladder */
+  .hr {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(46px, 1fr));
+    gap: 3px;
+    margin-top: 8px;
+  }
+  .hr div {
+    background: var(--panel);
+    border: 1px solid var(--rule2);
+    padding: 6px 2px;
+    text-align: center;
+    font-size: 10.5px;
+  }
+  .hr div.dead {
+    background: rgba(158, 43, 20, .18);
+    border-color: rgba(158, 43, 20, .4);
+    color: var(--red);
+  }
+  .hr div .i { font-family: var(--cond); font-size: 8.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink2); }
+
+  .flag {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--amber);
+    background: #ECEFF1;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .flag.info { border-left-color: var(--blue); }
+  .flag.danger { border-left-color: var(--red); }
+  .flag.success { border-left-color: var(--green); }
+
+  /* Context Templates Section */
+  .tpl-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin-top: 10px;
+  }
+  @media(max-width: 900px) { .tpl-grid { grid-template-columns: 1fr; } }
+  
+  .tpl-card {
+    background: #eef2f3;
+    border: 1px solid var(--rule2);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .tpl-title {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tpl-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border: 1px solid var(--rule);
+    background: var(--panel);
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .tpl-desc {
+    font-size: 10.5px;
+    color: var(--ink2);
+    line-height: 1.4;
+    margin-bottom: 10px;
+  }
+  .tpl-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    background: var(--panel);
+    padding: 8px;
+    border: 1px solid var(--rule2);
+    margin-bottom: 8px;
+  }
+  .tpl-stats .slab { font-family: var(--cond); font-size: 9px; text-transform: uppercase; color: var(--ink2); }
+  .tpl-stats .sval { font-weight: 700; font-size: 13px; }
+  .tpl-log-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    background: #e1e7e9;
+    padding: 6px 8px;
+    border: 1px dashed var(--rule);
+  }
+  .tpl-log-row input {
+    width: 48px;
+    padding: 2px 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    border: 1px solid var(--rule);
+    background: #fff;
+    color: var(--ink);
+  }
+
+  /* Setup Performance Block inside Trade Panel */
+  .setup-perf-block {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--rule);
+  }
+  .setup-perf-header {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .setup-perf-row {
+    background: #eef2f3;
+    border: 1px solid var(--rule2);
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .setup-perf-row:last-child { margin-bottom: 0; }
+  .setup-perf-name {
+    font-family: var(--cond);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .setup-perf-be {
+    font-size: 10px;
+    color: var(--ink2);
+    text-align: right;
+  }
+  .setup-perf-inputs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .setup-perf-inputs input {
+    width: 36px;
+    padding: 2px 3px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    border: 1px solid var(--rule);
+    background: #fff;
+    color: var(--ink);
+    text-align: center;
+  }
+  .setup-perf-result {
+    min-width: 90px;
+    text-align: right;
+    font-weight: 700;
+    font-size: 11px;
+  }
+
+  /* Proposed Barriers from Axis Structure */
+  .propose-barriers-box {
+    background: #eef2f4;
+    border: 1px solid var(--rule2);
+    padding: 8px 10px;
+    margin-bottom: 12px;
+  }
+  .propose-title {
+    font-family: var(--cond);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .propose-btn-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+  }
+  .propose-btn {
+    font-family: var(--cond);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid var(--rule);
+    padding: 5px 7px;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    transition: all 0.12s ease;
+  }
+  .propose-btn:hover {
+    background: var(--ink);
+    color: #fff;
+    border-color: var(--ink);
+  }
+  .propose-btn:hover .propose-sub {
+    color: #cbd6dc;
+  }
+  .propose-sub {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink2);
+    font-weight: normal;
+  }
+  .propose-note {
+    font-size: 10px;
+    color: var(--ink);
+    margin-top: 6px;
+    padding-top: 5px;
+    border-top: 1px dashed var(--rule2);
+    font-family: var(--mono);
+    line-height: 1.35;
+  }
+
+  /* Axis quick snap bar */
+  .axis-snap-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 6px 0 8px 0;
+  }
+  .axis-snap-pill {
+    font-family: var(--cond);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    background: #eef2f3;
+    color: var(--ink);
+    border: 1px solid var(--rule);
+    padding: 2px 7px;
+    cursor: pointer;
+    transition: all 0.1s ease;
+  }
+  .axis-snap-pill:hover {
+    background: var(--ink);
+    color: #fff;
+    border-color: var(--ink);
+  }
+
+  /* Axis Interactive Context Menu on Click */
+  .axis-click-menu {
+    position: absolute;
+    display: none;
+    z-index: 60;
+    background: var(--ink);
+    color: #fff;
+    border: 1px solid #334450;
+    padding: 6px 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    font-size: 10.5px;
+  }
+  .axis-click-menu .acm-title {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 10px;
+    color: var(--amber);
+    margin-bottom: 5px;
+    border-bottom: 1px solid #334450;
+    padding-bottom: 3px;
+  }
+  .axis-click-btns {
+    display: flex;
+    gap: 4px;
+  }
+  .axis-click-btns button {
+    font-family: var(--cond);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    background: #23313a;
+    color: #fff;
+    border: 1px solid #455763;
+    padding: 3px 6px;
+    cursor: pointer;
+  }
+  .axis-click-btns button:hover {
+    background: #58a6ff;
+    color: #000;
+    border-color: #58a6ff;
+  }
+
+  /* Session Bar */
+  .session-strip {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: 12px 14px;
+    margin-top: 6px;
+  }
+  .timeline {
+    position: relative;
+    height: 28px;
+    background: #DBE1E3;
+    border: 1px solid var(--rule);
+    display: flex;
+    overflow: hidden;
+    margin: 8px 0;
+  }
+  .ses-block {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--cond);
+    font-size: 10px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    font-weight: 600;
+    border-right: 1px dashed var(--rule);
+  }
+  .ses-asia { width: 33.33%; background: rgba(26, 84, 128, 0.08); color: var(--blue); }
+  .ses-lon  { width: 25.00%; background: rgba(168, 119, 34, 0.08); color: var(--amber); }
+  .ses-ny   { width: 29.17%; background: rgba(27, 96, 70, 0.08); color: var(--green); }
+  .ses-prep { width: 12.50%; background: rgba(15, 26, 33, 0.04); color: var(--ink2); }
+  
+  .timeline-utc-now {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--ink);
+    z-index: 5;
+  }
+  .timeline-utc-now::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    width: 8px;
+    height: 8px;
+    background: var(--ink);
+    transform: rotate(45deg);
+  }
+  .timeline-08utc {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--amber);
+    z-index: 4;
+  }
+
+  footer {
+    margin-top: 28px;
+    padding-top: 10px;
+    border-top: 1px solid var(--rule);
+    font-size: 10px;
+    color: var(--ink2);
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- Header -->
+<header>
+  <div>
+    <div class="h-left">
+      <h1>BTC Risk Sheet</h1>
+      <a href="/" class="nav-btn">⬡ OrderFlow Pro Terminal</a>
+    </div>
+    <div class="sub">Discretionary Trade Management · Zero Directional Signals · Pure Geometry &amp; Context Calibration</div>
+  </div>
+  <div class="h-right">
+    <div id="conn-badge"><div class="dot" id="liveDot"></div><span id="connText">Connecting...</span></div>
+    <div id="verdict">—</div>
+  </div>
+</header>
+
+<!-- Top Market Strip -->
+<div class="mkt">
+  <div><div class="l">BTC Spot</div><div class="n" id="mSpot">$—</div></div>
+  <div><div class="l">Net GEX · Regime</div><div class="n" id="mGex">—</div></div>
+  <div><div class="l">Zero Gamma Level</div><div class="n" id="mZeroG">—</div></div>
+  <div><div class="l">Put / Call Wall</div><div class="n" id="mWalls">—</div></div>
+  <div><div class="l">ATM IV · 24h RV</div><div class="n" id="mIvRv">—</div></div>
+  <div><div class="l">Expected Move (0DTE / 7D)</div><div class="n" id="mExpMove">—</div></div>
+</div>
+
+<!-- Main 2-Column Grid -->
+<div class="layout-grid">
+
+  <!-- LEFT: Shared Price Axis Centerpiece -->
+  <div class="axis-container">
+    <div class="cap">
+      <span>Shared Price Axis</span>
+      <small id="axisRangeLab">±1.5σ Expected Band</small>
+    </div>
+    <div class="axis-legend">
+      <span><i style="background:var(--green)"></i> GEX + (Dampening)</span>
+      <span><i style="background:var(--red)"></i> GEX − (Amplifying)</span>
+      <span><i style="background:#58a6ff"></i> L2 Depth / VAP</span>
+      <span><i style="background:var(--purple)"></i> Liq Proxies</span>
+      <span><i style="background:var(--amber)"></i> Zero Γ</span>
+    </div>
+
+    <!-- Quick Snap Pill Bar on Axis -->
+    <div class="axis-snap-bar">
+      <span style="font-family:var(--cond); font-size:10px; color:var(--ink2); text-transform:uppercase; margin-right:2px; align-self:center;">Propose:</span>
+      <button class="axis-snap-pill" onclick="proposeBarriers('put_wall_long')">⚓ Put Wall Long</button>
+      <button class="axis-snap-pill" onclick="proposeBarriers('call_wall_short')">⚓ Call Wall Short</button>
+      <button class="axis-snap-pill" onclick="proposeBarriers('zerog_breakout_long')">⚓ Zero-Γ Breakout</button>
+      <button class="axis-snap-pill" onclick="proposeBarriers('liq_sweep_long')">⚓ 50x Liq Long</button>
+      <button class="axis-snap-pill" onclick="proposeBarriers('va_reversion_long')">⚓ VAL Reversion</button>
+    </div>
+
+    <div class="axis-canvas-wrap" id="axisWrap">
+      <svg id="axisSvg"></svg>
+      <div class="axis-tooltip" id="axisTooltip"></div>
+      <div class="axis-click-menu" id="axisClickMenu">
+        <div class="acm-title" id="acmLevel">Structural Anchor</div>
+        <div class="axis-click-btns">
+          <button onclick="setBarrierFromMenu('entry')">Entry</button>
+          <button onclick="setBarrierFromMenu('stop')">Stop</button>
+          <button onclick="setBarrierFromMenu('target')">Target</button>
+          <button onclick="proposeFromAxisMenu('long')">Long Setup</button>
+          <button onclick="proposeFromAxisMenu('short')">Short Setup</button>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top: 8px; font-size: 10px; color: var(--ink2); line-height: 1.4;">
+      <strong>Interactive Barriers:</strong> Click any structural level or drag Target (Green), Entry (Ink), or Stop (Red) handles directly on the chart.
+    </div>
+  </div>
+
+  <!-- RIGHT: Panels -->
+  <div class="panels-col">
+
+    <!-- 1. Barrier Inputs & Trade Geometry -->
+    <div class="cols-2">
+      <!-- Inputs -->
+      <div class="card">
+        <div class="cap">
+          <span>Barrier Inputs</span>
+          <small style="color:var(--ink2); font-weight:normal;">Axis-Anchored</small>
+        </div>
+
+        <!-- Proposed Barriers from Axis Structure -->
+        <div class="propose-barriers-box">
+          <div class="propose-title">
+            <span>Proposed Barriers from Axis Structure</span>
+            <span style="font-size:9.5px; color:var(--ink2); font-weight:normal;">1-Click Anchors</span>
+          </div>
+          <div class="propose-btn-grid">
+            <button class="propose-btn" onclick="proposeBarriers('put_wall_long')" title="Buy into Put Gamma Wall support with stop below dealer cluster">
+              <span>⚓ Put Wall Pinning</span>
+              <span class="propose-sub" id="pbtn_put_sub">Entry @ Put Wall · Stop -0.35%</span>
+            </button>
+            <button class="propose-btn" onclick="proposeBarriers('call_wall_short')" title="Sell into Call Gamma Wall resistance with stop above dealer cluster">
+              <span>⚓ Call Wall Resistance</span>
+              <span class="propose-sub" id="pbtn_call_sub">Entry @ Call Wall · Stop +0.35%</span>
+            </button>
+            <button class="propose-btn" onclick="proposeBarriers('zerog_breakout_long')" title="Long momentum breakout across Zero Gamma into amplifying volatility">
+              <span>⚓ Zero-Γ Breakout Long</span>
+              <span class="propose-sub" id="pbtn_zerog_sub">Entry @ Zero-Γ · Stop @ VAL</span>
+            </button>
+            <button class="propose-btn" onclick="proposeBarriers('liq_sweep_long')" title="Fade 50x long liquidation cluster cascade exhaustion">
+              <span>⚓ 50x Liq Sweep Long</span>
+              <span class="propose-sub" id="pbtn_liq_l_sub">Entry @ 50x Liq · Stop -0.35%</span>
+            </button>
+            <button class="propose-btn" onclick="proposeBarriers('liq_sweep_short')" title="Fade 50x short liquidation cluster cascade exhaustion">
+              <span>⚓ 50x Liq Sweep Short</span>
+              <span class="propose-sub" id="pbtn_liq_s_sub">Entry @ 50x Liq · Stop +0.35%</span>
+            </button>
+            <button class="propose-btn" onclick="proposeBarriers('va_reversion_long')" title="Auction Market Theory Value Area Low to Value Area High reversion">
+              <span>⚓ Value Area Reversion</span>
+              <span class="propose-sub" id="pbtn_va_sub">Entry @ VAL · Target @ VAH</span>
+            </button>
+          </div>
+          <div class="propose-note" id="proposedAnchorNote">
+            <strong>⚓ Current Anchor:</strong> Custom Manual Placement
+          </div>
+        </div>
+        
+        <div class="ctl">
+          <div class="ctlhead"><label for="i_entry">Entry Price</label><span class="val" id="v_entry">—</span></div>
+          <input type="range" id="i_entry" min="40000" max="150000" step="25" value="64500">
+        </div>
+
+        <div class="ctl">
+          <div class="ctlhead"><label for="i_stop">Stop-Loss (Stop)</label><span class="val neg" id="v_stop">—</span></div>
+          <input type="range" id="i_stop" min="40000" max="150000" step="25" value="63900">
+        </div>
+
+        <div class="ctl">
+          <div class="ctlhead"><label for="i_target">Profit Target (Target)</label><span class="val pos" id="v_target">—</span></div>
+          <input type="range" id="i_target" min="40000" max="150000" step="25" value="65900">
+        </div>
+
+        <div class="ctl" style="margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--rule2);">
+          <div class="ctlhead">
+            <label for="i_drift">Annualized Drift Assumption (μ)</label>
+            <span class="val" id="v_drift">0.0 % (Martingale)</span>
+          </div>
+          <input type="range" id="i_drift" min="-40" max="40" step="1" value="0">
+          <small style="font-size:9.5px; color:var(--ink2);">0.0% assumes a driftless martingale. Geometric barrier placement alone cannot manufacture edge.</small>
+        </div>
+
+        <div class="ctl" style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--rule2);">
+          <div class="ctlhead">
+            <label for="i_manual_p">Discretionary Win Rate (Optional)</label>
+            <span class="val" id="v_manual_p">None</span>
+          </div>
+          <div style="display:flex; gap: 8px; align-items:center;">
+            <input type="range" id="i_manual_p" min="0" max="95" step="1" value="0" style="flex:1;">
+            <button id="btnResetManualP" style="font-size:10px; padding:2px 6px; font-family:var(--cond); border:1px solid var(--rule); background:transparent; cursor:pointer;">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trade Geometry Result -->
+      <div class="card">
+        <div class="cap">Trade Geometry</div>
+        
+        <div class="row big">
+          <span class="k">Breakeven Win Rate</span>
+          <span class="v" id="g_be_winrate">—</span>
+        </div>
+
+        <div class="row">
+          <span class="k">Risk-to-Reward Ratio (RRR)</span>
+          <span class="v" id="g_rrr">—</span>
+        </div>
+        <div class="row">
+          <span class="k">GBM First-Passage (P_Target)</span>
+          <span class="v" id="g_ptarget">—</span>
+        </div>
+        <div class="row">
+          <span class="k">Stop Distance</span>
+          <span class="v neg" id="g_stop_dist">—</span>
+        </div>
+        <div class="row">
+          <span class="k">Target Distance</span>
+          <span class="v pos" id="g_target_dist">—</span>
+        </div>
+        <div class="row">
+          <span class="k">Expectancy (Driftless = −Cost R)</span>
+          <span class="v" id="g_ev_r">—</span>
+        </div>
+        <div class="row" id="row_manual_ev" style="display:none; background: #dfe7e9; padding: 4px 6px;">
+          <span class="k">E[R] with Discretionary Win Rate</span>
+          <span class="v" id="g_manual_ev">—</span>
+        </div>
+        <div class="row">
+          <span class="k">Distance to Sign Flip</span>
+          <span class="v" id="g_sign_flip">—</span>
+        </div>
+
+        <!-- Setup Performance Tracker -->
+        <div class="setup-perf-block">
+          <div class="setup-perf-header">
+            <span>Setup Performance</span>
+            <small style="font-weight:normal; text-transform:none; color:var(--ink2);">Calculated BE vs. Your Realized Win Rate</small>
+          </div>
+          
+          <div class="setup-perf-row">
+            <div>
+              <div class="setup-perf-name">Current Barrier Geometry</div>
+              <div class="setup-perf-be" id="perf_curr_be">BE Win Rate: —</div>
+            </div>
+            <div class="setup-perf-inputs">
+              <label style="font-size:9.5px; color:var(--ink2);">W: <input type="number" id="perf_curr_w" min="0" value="0" title="Wins"></label>
+              <label style="font-size:9.5px; color:var(--ink2);">N: <input type="number" id="perf_curr_n" min="0" value="0" title="Total Trades"></label>
+            </div>
+            <div class="setup-perf-result" id="perf_curr_res">Uncalibrated</div>
+          </div>
+
+          <div class="setup-perf-row">
+            <div>
+              <div class="setup-perf-name">A: Gamma Pinning (RRR 2.5:1)</div>
+              <div class="setup-perf-be">BE Win Rate: 29.7%</div>
+            </div>
+            <div class="setup-perf-inputs">
+              <label style="font-size:9.5px; color:var(--ink2);">W: <input type="number" id="perf_tA_w" min="0" value="0" title="Wins"></label>
+              <label style="font-size:9.5px; color:var(--ink2);">N: <input type="number" id="perf_tA_n" min="0" value="0" title="Total Trades"></label>
+            </div>
+            <div class="setup-perf-result" id="perf_tA_res">Uncalibrated</div>
+          </div>
+
+          <div class="setup-perf-row">
+            <div>
+              <div class="setup-perf-name">B: Zero-Γ Breakout (RRR 1.8:1)</div>
+              <div class="setup-perf-be">BE Win Rate: 37.1%</div>
+            </div>
+            <div class="setup-perf-inputs">
+              <label style="font-size:9.5px; color:var(--ink2);">W: <input type="number" id="perf_tB_w" min="0" value="0" title="Wins"></label>
+              <label style="font-size:9.5px; color:var(--ink2);">N: <input type="number" id="perf_tB_n" min="0" value="0" title="Total Trades"></label>
+            </div>
+            <div class="setup-perf-result" id="perf_tB_res">Uncalibrated</div>
+          </div>
+
+          <div class="setup-perf-row">
+            <div>
+              <div class="setup-perf-name">C: Liq Exhaustion (RRR 2.0:1)</div>
+              <div class="setup-perf-be">BE Win Rate: 34.7%</div>
+            </div>
+            <div class="setup-perf-inputs">
+              <label style="font-size:9.5px; color:var(--ink2);">W: <input type="number" id="perf_tC_w" min="0" value="0" title="Wins"></label>
+              <label style="font-size:9.5px; color:var(--ink2);">N: <input type="number" id="perf_tC_n" min="0" value="0" title="Total Trades"></label>
+            </div>
+            <div class="setup-perf-result" id="perf_tC_res">Uncalibrated</div>
+          </div>
+
+          <div class="setup-perf-row">
+            <div>
+              <div class="setup-perf-name">D: 08:00 UTC Expiry (RRR 1.5:1)</div>
+              <div class="setup-perf-be">BE Win Rate: 41.6%</div>
+            </div>
+            <div class="setup-perf-inputs">
+              <label style="font-size:9.5px; color:var(--ink2);">W: <input type="number" id="perf_tD_w" min="0" value="0" title="Wins"></label>
+              <label style="font-size:9.5px; color:var(--ink2);">N: <input type="number" id="perf_tD_n" min="0" value="0" title="Total Trades"></label>
+            </div>
+            <div class="setup-perf-result" id="perf_tD_res">Uncalibrated</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Prop Firm Sizing & Monte Carlo Simulation -->
+    <div class="cols-2">
+      <!-- Prop Sizing -->
+      <div class="card">
+        <div class="cap">Position Sizing · Prop Rules</div>
+        <div class="firms" id="firmBtns"></div>
+
+        <div class="ctl">
+          <div class="ctlhead"><label for="i_risk_pct">Risk per Trade (% of Account)</label><span class="val" id="v_risk_pct">0.50 %</span></div>
+          <input type="range" id="i_risk_pct" min="0.1" max="2.0" step="0.05" value="0.5">
+        </div>
+
+        <div class="row"><span class="k">Risk in USD</span><span class="v" id="s_risk_usd">—</span></div>
+        <div class="row"><span class="k">Position Size</span><span class="v" id="s_btc_amt" style="font-weight:700;">—</span></div>
+        <div class="row"><span class="k">Notional (USD)</span><span class="v" id="s_notional">—</span></div>
+        <div class="row"><span class="k">Effective Leverage</span><span class="v" id="s_eff_lev">—</span></div>
+        <div class="row"><span class="k">Round-Trip Friction (Fee+Slip)</span><span class="v neg" id="s_comm_rt">—</span></div>
+        <div class="row"><span class="k">Max Loss if Stopped</span><span class="v neg" id="s_total_stop_loss">—</span></div>
+      </div>
+
+      <!-- Challenge Monte Carlo Simulation -->
+      <div class="card">
+        <div class="cap">Challenge Simulation <small>4,000 Runs / 60 Trading Days</small></div>
+        
+        <div id="outcome"></div>
+        <div class="okey">
+          <span><i class="oPass"></i>Passed</span>
+          <span><i class="oDaily"></i>Daily Loss Bust</span>
+          <span><i class="oTotal"></i>Total DD Bust</span>
+          <span><i class="oOpen"></i>Open</span>
+        </div>
+
+        <div class="slist">
+          <div class="scell">
+            <div class="lab">Pass Probability</div>
+            <div class="num" id="sim_pass_pct">—</div>
+            <div class="note" id="sim_pass_note">—</div>
+          </div>
+          <div class="scell">
+            <div class="lab">Median Days</div>
+            <div class="num" id="sim_med_days">—</div>
+            <div class="note" id="sim_med_note">To Profit Target</div>
+          </div>
+          <div class="scell">
+            <div class="lab">Expected Value</div>
+            <div class="num" id="sim_ev_chall">—</div>
+            <div class="note">Net Payout minus Fee</div>
+          </div>
+        </div>
+
+        <div class="flag" id="sim_flag" style="margin-top:8px;">—</div>
+      </div>
+    </div>
+
+    <!-- 3. Headroom Ladder & OrderFlow State -->
+    <div class="cols-2">
+      <!-- Headroom ladder -->
+      <div class="card">
+        <div class="cap">Loss Buffer Today · Trades Until Limit</div>
+        <div class="hr" id="ladderWrap"></div>
+        <div class="flag" id="ladderFlag" style="margin-top:8px;">—</div>
+      </div>
+
+      <!-- Orderflow & Market Structure -->
+      <div class="card">
+        <div class="cap">Order Flow &amp; Market Structure</div>
+        <div class="row"><span class="k">CVD Rolling Delta (200 Trades)</span><span class="v" id="of_cvd">—</span></div>
+        <div class="row"><span class="k">Order Book Imbalance (Top 5 / 20)</span><span class="v" id="of_imb">—</span></div>
+        <div class="row"><span class="k">Passive Absorption</span><span class="v" id="of_absorp">—</span></div>
+        <div class="row"><span class="k">Delta Divergence</span><span class="v" id="of_div">—</span></div>
+        <div class="row"><span class="k">Session POC / Value Area</span><span class="v" id="of_session_va">—</span></div>
+        <div class="row"><span class="k">Day Type Structure (Road Map)</span><span class="v" id="of_day_type">—</span></div>
+      </div>
+    </div>
+
+    <!-- 4. Structural Context Templates (Kontextvorlagen) -->
+    <div class="card">
+      <div class="cap">
+        <span>Structural Context Templates (Kontextvorlagen)</span>
+        <small>Empirical Log Calibration vs. Geometric Breakeven</small>
+      </div>
+      <p style="font-size:11px; color:var(--ink2); margin-bottom:8px;">
+        Context templates define structural hypotheses, never automated trade promises. Track your realized win rate against the geometric breakeven requirement to verify if you possess an empirical edge.
+      </p>
+
+      <div class="tpl-grid">
+        <!-- Template A -->
+        <div class="tpl-card">
+          <div>
+            <div class="tpl-title">
+              <span>A: Gamma Wall Pinning / Reversion</span>
+              <span class="tpl-badge" style="color:var(--green);">Dampening</span>
+            </div>
+            <div class="tpl-desc">
+              Net GEX &gt; 0 (dealer long gamma). Price tests Call/Put Wall + L2 Depth Imbalance surge + Passive Absorption.
+            </div>
+            <div class="tpl-stats">
+              <div>
+                <div class="slab">Breakeven Win Rate (RRR 2.5:1)</div>
+                <div class="sval" id="tA_be">29.7 %</div>
+              </div>
+              <div>
+                <div class="slab">Realized Sample Win Rate</div>
+                <div class="sval" id="tA_sample">Uncalibrated</div>
+              </div>
+            </div>
+          </div>
+          <div class="tpl-log-row">
+            <span>Log Sample:</span>
+            <label>Wins: <input type="number" id="tA_w" min="0" value="0"></label>
+            <label>Trades: <input type="number" id="tA_n" min="0" value="0"></label>
+            <span id="tA_edge" style="font-weight:600; margin-left:auto;">—</span>
+          </div>
+        </div>
+
+        <!-- Template B -->
+        <div class="tpl-card">
+          <div>
+            <div class="tpl-title">
+              <span>B: Zero Gamma Breakout / Expansion</span>
+              <span class="tpl-badge" style="color:var(--red);">Amplifying</span>
+            </div>
+            <div class="tpl-desc">
+              Net GEX &lt; 0 (dealer short gamma). Price crosses Zero Gamma level + Rolling CVD delta surge breaking outside Value Area (VAH/VAL).
+            </div>
+            <div class="tpl-stats">
+              <div>
+                <div class="slab">Breakeven Win Rate (RRR 1.8:1)</div>
+                <div class="sval" id="tB_be">37.1 %</div>
+              </div>
+              <div>
+                <div class="slab">Realized Sample Win Rate</div>
+                <div class="sval" id="tB_sample">Uncalibrated</div>
+              </div>
+            </div>
+          </div>
+          <div class="tpl-log-row">
+            <span>Log Sample:</span>
+            <label>Wins: <input type="number" id="tB_w" min="0" value="0"></label>
+            <label>Trades: <input type="number" id="tB_n" min="0" value="0"></label>
+            <span id="tB_edge" style="font-weight:600; margin-left:auto;">—</span>
+          </div>
+        </div>
+
+        <!-- Template C -->
+        <div class="tpl-card">
+          <div>
+            <div class="tpl-title">
+              <span>C: Liquidation Cascade Exhaustion</span>
+              <span class="tpl-badge" style="color:var(--purple);">Orderflow</span>
+            </div>
+            <div class="tpl-desc">
+              Price sweeps clustered leverage tier (25x/50x) + Delta Divergence (new price extreme unconfirmed by CVD exhaustion).
+            </div>
+            <div class="tpl-stats">
+              <div>
+                <div class="slab">Breakeven Win Rate (RRR 2.0:1)</div>
+                <div class="sval" id="tC_be">34.7 %</div>
+              </div>
+              <div>
+                <div class="slab">Realized Sample Win Rate</div>
+                <div class="sval" id="tC_sample">Uncalibrated</div>
+              </div>
+            </div>
+          </div>
+          <div class="tpl-log-row">
+            <span>Log Sample:</span>
+            <label>Wins: <input type="number" id="tC_w" min="0" value="0"></label>
+            <label>Trades: <input type="number" id="tC_n" min="0" value="0"></label>
+            <span id="tC_edge" style="font-weight:600; margin-left:auto;">—</span>
+          </div>
+        </div>
+
+        <!-- Template D -->
+        <div class="tpl-card">
+          <div>
+            <div class="tpl-title">
+              <span>D: 08:00 UTC Deribit Expiry Reversal</span>
+              <span class="tpl-badge" style="color:var(--amber);">Weiss et al., 2026</span>
+            </div>
+            <div class="tpl-desc">
+              Strict dual condition: Top-decile ATM OI (≥ $109.2M within ±2.5% Spot at 07:00 UTC) AND Negative Net Gamma. Return reversal 08:00–10:00 UTC following 07:00–08:00 UTC drift.
+            </div>
+            <div class="tpl-stats">
+              <div>
+                <div class="slab">Breakeven Win Rate (RRR 1.5:1)</div>
+                <div class="sval" id="tD_be">41.6 %</div>
+              </div>
+              <div>
+                <div class="slab">Realized Sample Win Rate</div>
+                <div class="sval" id="tD_sample">Uncalibrated</div>
+              </div>
+            </div>
+          </div>
+          <div class="tpl-log-row">
+            <span>Log Sample:</span>
+            <label>Wins: <input type="number" id="tD_w" min="0" value="0"></label>
+            <label>Trades: <input type="number" id="tD_n" min="0" value="0"></label>
+            <span id="tD_edge" style="font-weight:600; margin-left:auto;">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Session Timeline & 08:00 UTC Expiry Marker -->
+    <div class="session-strip">
+      <div class="cap">
+        <span>24h Session Clock &amp; 08:00 UTC Deribit Expiry</span>
+        <small id="utcClock">UTC --:--:--</small>
+      </div>
+      <div class="timeline">
+        <div class="ses-block ses-asia">Asia 00–08</div>
+        <div class="ses-block ses-lon">London 08–14</div>
+        <div class="ses-block ses-ny">New York 14–21</div>
+        <div class="ses-block ses-prep">Late 21–24</div>
+        <div class="timeline-08utc" style="left: 33.33%;" title="08:00 UTC Deribit Settlement"></div>
+        <div class="timeline-utc-now" id="utcNowMark" style="left: 50%;"></div>
+      </div>
+      <div class="flag info" id="expiryFlagBox">
+        <strong id="expiryFlagTitle">08:00 UTC Deribit Expiry Context (Weiss, Gaudiosi, Zhou &amp; Webb, Finance Research Letters 2026):</strong>
+        <div id="expiryResearchDetails" style="margin-top: 4px; font-size: 10.5px; color: var(--ink2); line-height: 1.45;">
+          Checking live Deribit options surface...
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  BTC Risk Sheet · Discretionary Trade Management &amp; Barrier Geometry Engine.
+  Options data polled via Deribit Public API; Net GEX computed under standard dealer-mirror inventory assumptions.
+  First-passage probabilities derived via Geometric Brownian Motion Martingale gambler's ruin formulation. Friction models incorporate commissions and estimated slippage.
+  Not financial advice. No directional prediction signals.
+</footer>
+
+</div>
+
+<script>
+// ── State Singletons ────────────────────────────────────────────────────────
+let state = null;
+let currentFirmKey = 'breakout_10k';
+let currentSpot = 64500;
+let isDraggingBarrier = null;
+
+const numFmt = (n, d=2) => (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const usd = (n, d=0) => (n == null || isNaN(n)) ? '—' : '$' + numFmt(n, d);
+
+// ── DOM Elements ────────────────────────────────────────────────────────────
+const elEntry = document.getElementById('i_entry');
+const elStop = document.getElementById('i_stop');
+const elTarget = document.getElementById('i_target');
+const elRiskPct = document.getElementById('i_risk_pct');
+const elDrift = document.getElementById('i_drift');
+const elManualP = document.getElementById('i_manual_p');
+const btnResetManualP = document.getElementById('btnResetManualP');
+
+// ── Polling & WebSockets ────────────────────────────────────────────────────
+async function fetchState() {
+  try {
+    const res = await fetch('/risk/state');
+    if (res.ok) {
+      const data = await res.json();
+      state = data;
+      currentSpot = data.spot;
+      document.getElementById('liveDot').classList.add('live');
+      document.getElementById('connText').textContent = 'LIVE (Binance/Deribit)';
+      updateMarketHeader(data);
+      renderPriceAxis();
+      evaluateTrade();
+    }
+  } catch (err) {
+    document.getElementById('liveDot').classList.remove('live');
+    document.getElementById('connText').textContent = 'OFFLINE / Retrying';
+  }
+}
+
+function connectWs() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+  ws.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      if (msg.type === 'tick' && msg.mid_price) {
+        currentSpot = msg.mid_price;
+        if (state) state.spot = currentSpot;
+        updateSpotMetricsOnly();
+        renderPriceAxis();
+      }
+    } catch {}
+  };
+  ws.onclose = () => setTimeout(connectWs, 5000);
+}
+
+// ── Header & Market Strip Updates ───────────────────────────────────────────
+function updateMarketHeader(data) {
+  const opt = data.options || {};
+  document.getElementById('mSpot').textContent = usd(data.spot, 2);
+  
+  const gexVal = opt.net_gex_usd || 0;
+  const gexMio = gexVal / 1000000;
+  const gexRegime = opt.gex_regime || (gexVal < 0 ? 'AMPLIFYING' : 'DAMPENING');
+  const gexEl = document.getElementById('mGex');
+  gexEl.textContent = `${gexMio >= 0 ? '+' : ''}${numFmt(gexMio, 2)}M (${gexRegime === 'AMPLIFYING' ? 'Amplifying' : 'Dampening'})`;
+  gexEl.className = 'n ' + (gexVal < 0 ? 'neg' : 'pos');
+
+  document.getElementById('mZeroG').textContent = opt.zero_gamma ? usd(opt.zero_gamma, 0) : '—';
+  document.getElementById('mWalls').textContent = `${usd(opt.put_wall, 0)} / ${usd(opt.call_wall, 0)}`;
+  document.getElementById('mIvRv').textContent = `${numFmt(opt.atm_iv, 1)}% · ${numFmt(opt.realised_vol_annualised, 1)}% (Ratio ${numFmt(opt.iv_rv_ratio, 2)})`;
+  document.getElementById('mExpMove').textContent = `±${usd(opt.expected_move_0dte, 0)} / ±${usd(opt.expected_move_weekly, 0)}`;
+
+  // Update Orderflow panel
+  const cvd = data.cvd || {};
+  const ofCvd = document.getElementById('of_cvd');
+  const rolling = cvd.rolling_delta || 0;
+  ofCvd.textContent = `${rolling >= 0 ? '+' : ''}${numFmt(rolling, 2)} BTC`;
+  ofCvd.className = 'v ' + (rolling >= 0 ? 'pos' : 'neg');
+
+  const ob = data.orderbook || {};
+  document.getElementById('of_imb').textContent = `${numFmt((ob.imbalance_5 || 0) * 100, 1)}% (5x) · ${numFmt((ob.imbalance_20 || 0) * 100, 1)}% (20x)`;
+
+  const ms = data.market_structure || {};
+  document.getElementById('of_absorp').textContent = ms.absorption ? 'Passive Absorption Detected' : 'No Absorption';
+  document.getElementById('of_absorp').className = 'v ' + (ms.absorption ? 'warn' : '');
+
+  document.getElementById('of_div').textContent = ms.divergence ? ms.divergence.divergence_type : 'No Divergence';
+  document.getElementById('of_session_va').textContent = `POC ${usd(ms.session_context?.session_poc, 0)} (VAH ${usd(ms.session_context?.session_value_area_high, 0)} / VAL ${usd(ms.session_context?.session_value_area_low, 0)})`;
+  document.getElementById('of_day_type').textContent = ms.road_map?.day_type || 'Normal Variation';
+
+  // Update proposed barrier button sub-labels with live prices
+  updateProposalButtonsUI();
+
+  // ── 08:00 UTC Expiry Context Flag (Weiss, Gaudiosi, Zhou & Webb, 2026) ────
+  // Finance Research Letters 107, doi:10.1016/j.frl.2026.110340
+  // STRICT EMPIRICAL RULE: Requires BOTH Top-Decile ATM OI (>= $109.2M or 90th percentile)
+  // AND Negative Net Gamma (Net GEX < 0, Dealers Short Gamma) at 07:00 UTC.
+  const expFlag = opt.expiry_reversal_flag || {};
+  const atmOiUsd = opt.atm_oi_usd || 0;
+  const atmOiMio = atmOiUsd / 1e6;
+  const isTopDecileOi = Boolean(expFlag.is_top_decile_oi ?? (atmOiUsd >= 109_200_000));
+  const isNegativeGamma = Boolean(expFlag.is_negative_gamma ?? (gexVal < 0));
+  const now = new Date();
+  const utcHour = now.getUTCHours();
+  const utcMin = now.getUTCMinutes();
+  const isTimeWindow = (utcHour === 7) || (utcHour >= 8 && utcHour < 10);
+  
+  // Strict dual condition requirement: MUST satisfy BOTH
+  const dualConditionMet = isTopDecileOi && isNegativeGamma;
+
+  const flagBox = document.getElementById('expiryFlagBox');
+  const flagTitle = document.getElementById('expiryFlagTitle');
+  const detailsEl = document.getElementById('expiryResearchDetails');
+
+  if (dualConditionMet && isTimeWindow) {
+    flagBox.className = 'flag danger';
+    flagTitle.innerHTML = `⚠️ 08:00 UTC Expiry Context: DUAL CONDITION ACTIVE (${utcHour === 7 ? 'Pre-Settlement Drift 07:00–08:00 UTC' : 'Post-Settlement Reversal Window 08:00–10:00 UTC'})`;
+    detailsEl.innerHTML = `
+      <div><strong>Strict Empirical Conditions Met:</strong> 1) Top-Decile ATM OI ($${numFmt(atmOiMio, 1)}M ≥ $109.2M threshold within ±2.5% Spot) <strong>AND</strong> 2) Negative Cumulative Net Gamma ($${numFmt(gexMio, 2)}M, Dealers Short Gamma / Amplifying).</div>
+      <div style="margin-top: 4px;"><strong>Documented Dynamic:</strong> Pre-settlement drift over 07:00–08:00 UTC (~0.17% return suppression) statistically documented to reverse over 08:00–10:00 UTC as dealer delta-hedging pressure unpins post-08:00 UTC settlement.</div>
+      <div style="margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--rule); color: var(--ink2); font-size: 10px;">
+        <strong>Mandatory Scientific Caveats:</strong>
+        <ul style="margin: 3px 0 0 16px; padding: 0;">
+          <li><strong>Sample Limitation:</strong> N = 1,058 trading days (January 2021 – December 2023, pre-spot ETF era). Post-ETF institutional flows may alter settlement dynamics.</li>
+          <li><strong>Low Explanatory Power:</strong> Adjusted R² = 0.0502 (5.02% of variance explained; ~95% of intraday price variance remains unmodelled).</li>
+          <li><strong>Dealer Inventory Model:</strong> Net GEX assumes dealers mirror customer flow (standard model assumption, not directly observed orderbook inventory).</li>
+          <li><strong>Context Only — NEVER a Signal:</strong> This is structural market context, not a directional trade recommendation, automated trigger, or standalone entry signal. Max Pain is explicitly not part of the empirical model.</li>
+        </ul>
+      </div>
+    `;
+  } else if (dualConditionMet && !isTimeWindow) {
+    flagBox.className = 'flag warn';
+    flagTitle.innerHTML = `08:00 UTC Expiry Context: Dual Surface Conditions Met (Outside 07:00–10:00 UTC Window)`;
+    detailsEl.innerHTML = `
+      <div><strong>Options Surface Status:</strong> Top-Decile ATM OI ($${numFmt(atmOiMio, 1)}M) and Negative Net Gamma ($${numFmt(gexMio, 2)}M) are active, but current time (UTC ${String(utcHour).padStart(2,'0')}:${String(utcMin).padStart(2,'0')}) is outside the 07:00–08:00 UTC pre-settlement &amp; 08:00–10:00 UTC reversal window.</div>
+      <div style="margin-top: 4px; color: var(--ink2); font-size: 10px;">
+        <em>Caveat: Empirical reversal effect is temporally restricted to 08:00 UTC settlement (Weiss et al. 2026, Adjusted R² = 0.0502, pre-ETF sample). Structural context only; never a directional signal.</em>
+      </div>
+    `;
+  } else {
+    flagBox.className = 'flag info';
+    flagTitle.innerHTML = `08:00 UTC Deribit Expiry Context: Inactive / Baseline (Weiss et al., 2026)`;
+    const unmet = [];
+    if (!isTopDecileOi) unmet.push(`ATM OI ($${numFmt(atmOiMio, 1)}M) < $109.2M Top-Decile Threshold (±2.5% Spot)`);
+    if (!isNegativeGamma) unmet.push(`Net GEX ($${numFmt(gexMio, 2)}M) ≥ 0 (Dealers Long Gamma / Dampening)`);
+    
+    detailsEl.innerHTML = `
+      <div><strong>Condition Status:</strong> Inactive — <em>${unmet.join(' · ')}</em>.</div>
+      <div style="margin-top: 4px; color: var(--ink2); font-size: 10px;">
+        <strong>Empirical Rule:</strong> The 08:00 UTC settlement return reversal requires <em>simultaneous</em> Top-Decile ATM Open Interest <strong>AND</strong> Negative Net Gamma (Triple interaction t = −2.83 to −2.97, p &lt; 0.01). If either condition is missing, return reversal coefficients are statistically indistinguishable from zero (p &gt; 0.10).
+      </div>
+      <div style="margin-top: 4px; color: var(--ink2); font-size: 9.5px; line-height: 1.35;">
+        <em>Baseline Caveats: Sample N = 1,058 (2021–2023 pre-ETF), Adjusted R² = 0.0502. Market maker mirror assumption applies. Structural context only; not an execution signal.</em>
+      </div>
+    `;
+  }
+
+  renderFirmButtons(data.presets);
+}
+
+function updateSpotMetricsOnly() {
+  document.getElementById('mSpot').textContent = usd(currentSpot, 2);
+}
+
+function renderFirmButtons(presets) {
+  if (!presets) return;
+  const container = document.getElementById('firmBtns');
+  container.innerHTML = '';
+  Object.keys(presets).forEach(key => {
+    const p = presets[key];
+    const btn = document.createElement('button');
+    btn.textContent = p.label;
+    btn.className = key === currentFirmKey ? 'on' : '';
+    btn.onclick = () => {
+      currentFirmKey = key;
+      renderFirmButtons(presets);
+      evaluateTrade();
+    };
+    container.appendChild(btn);
+  });
+}
+
+// ── Trade Evaluation (POST /risk/evaluate) ──────────────────────────────────
+async function evaluateTrade() {
+  const entry = parseFloat(elEntry.value);
+  const stop = parseFloat(elStop.value);
+  const target = parseFloat(elTarget.value);
+  const riskPct = parseFloat(elRiskPct.value) / 100;
+  const driftVal = parseFloat(elDrift.value) / 100;
+  const manualPVal = parseFloat(elManualP.value);
+  const manualWinRate = manualPVal > 0 ? manualPVal / 100 : null;
+
+  document.getElementById('v_entry').textContent = usd(entry, 0);
+  document.getElementById('v_stop').textContent = usd(stop, 0);
+  document.getElementById('v_target').textContent = usd(target, 0);
+  document.getElementById('v_risk_pct').textContent = `${numFmt(riskPct * 100, 2)} %`;
+  document.getElementById('v_drift').textContent = driftVal === 0
+    ? '0.0 % (Martingale / Zero Drift)'
+    : `${driftVal > 0 ? '+' : ''}${numFmt(driftVal * 100, 1)} % Annual Drift`;
+  document.getElementById('v_manual_p').textContent = manualWinRate ? `${numFmt(manualWinRate * 100, 0)} %` : 'None (Martingale / GBM)';
+
+  try {
+    const res = await fetch('/risk/evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entry,
+        stop,
+        target,
+        rules_key: currentFirmKey,
+        risk_pct: riskPct,
+        annual_drift: driftVal,
+        cost_r: 0.04,
+        manual_win_rate: manualWinRate,
+        trades_per_day: 3
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      paintEvaluation(data);
+    }
+  } catch (err) {
+    console.error('Evaluate error:', err);
+  }
+}
+
+function paintEvaluation(data) {
+  const geo = data.geometry;
+  const size = data.sizing;
+  const sim = data.simulation;
+  const rules = data.rules;
+
+  // 1. Geometry
+  const beEl = document.getElementById('g_be_winrate');
+  beEl.textContent = `${numFmt(geo.breakeven_win_rate * 100, 1)} %`;
+  
+  document.getElementById('g_rrr').textContent = `${numFmt(geo.rrr, 2)} : 1`;
+  document.getElementById('g_ptarget').textContent = `${numFmt(geo.p_target * 100, 1)} % (Martingale ${numFmt(1 / (1 + geo.rrr) * 100, 1)} %)`;
+  document.getElementById('g_stop_dist').textContent = `−${usd(geo.entry - geo.stop, 0)} (${numFmt((geo.entry - geo.stop) / geo.entry * 100, 2)} %)`;
+  document.getElementById('g_target_dist').textContent = `+${usd(geo.target - geo.entry, 0)} (${numFmt((geo.target - geo.entry) / geo.entry * 100, 2)} %)`;
+  
+  const evEl = document.getElementById('g_ev_r');
+  evEl.textContent = `${geo.expectancy_r >= 0 ? '+' : ''}${numFmt(geo.expectancy_r, 3)} R`;
+  evEl.className = 'v ' + (geo.expectancy_r > 0 ? 'pos' : geo.expectancy_r < 0 ? 'neg' : '');
+
+  // Manual Win Rate row
+  const manRow = document.getElementById('row_manual_ev');
+  if (geo.manual_evaluation) {
+    manRow.style.display = 'flex';
+    const mev = geo.manual_evaluation.manual_expectancy_r;
+    const mevEl = document.getElementById('g_manual_ev');
+    mevEl.textContent = `${mev >= 0 ? '+' : ''}${numFmt(mev, 3)} R`;
+    mevEl.className = 'v ' + (mev > 0 ? 'pos' : 'neg');
+  } else {
+    manRow.style.display = 'none';
+  }
+
+  // Distance to Sign Flip: under zero drift martingale, sign flip does not exist
+  const sfEl = document.getElementById('g_sign_flip');
+  if (Math.abs(geo.annual_drift) < 1e-5) {
+    sfEl.textContent = 'None (Invariant under Martingale / Zero Drift)';
+    sfEl.style.color = 'var(--ink2)';
+    sfEl.style.fontWeight = 'normal';
+  } else if (geo.sign_flip_distance_pct !== null) {
+    sfEl.textContent = `${numFmt(geo.sign_flip_distance_pct, 2)} % Price Move`;
+    sfEl.style.color = 'var(--ink)';
+    sfEl.style.fontWeight = '600';
+  } else {
+    sfEl.textContent = 'No sign flip in barrier span';
+    sfEl.style.color = 'var(--ink2)';
+  }
+
+  // 2. Sizing
+  document.getElementById('s_risk_usd').textContent = `${usd(size.risk_usd, 2)} (${numFmt(size.risk_pct, 2)} %)`;
+  document.getElementById('s_btc_amt').textContent = `${numFmt(size.btc_amount, 4)} BTC`;
+  document.getElementById('s_notional').textContent = usd(size.notional_usd, 0);
+  
+  const levEl = document.getElementById('s_eff_lev');
+  levEl.textContent = `${numFmt(size.effective_leverage, 2)}x ${size.is_leverage_capped ? '(Capped at Firm Max)' : ''}`;
+  levEl.className = 'v ' + (size.is_leverage_capped ? 'warn' : '');
+
+  document.getElementById('s_comm_rt').textContent = `−${usd(size.commission_rt, 2)}`;
+  document.getElementById('s_total_stop_loss').textContent = `−${usd(size.total_loss_per_stop, 2)}`;
+
+  // 3. Monte Carlo Simulation
+  const passPct = sim.pass_pct;
+  const bar = document.getElementById('outcome');
+  bar.innerHTML = `
+    <div class="oPass" style="flex:0 0 ${passPct}%">${passPct > 10 ? numFmt(passPct, 0) + '%' : ''}</div>
+    <div class="oDaily" style="flex:0 0 ${sim.daily_bust_pct}%">${sim.daily_bust_pct > 10 ? numFmt(sim.daily_bust_pct, 0) + '%' : ''}</div>
+    <div class="oTotal" style="flex:0 0 ${sim.total_bust_pct}%">${sim.total_bust_pct > 10 ? numFmt(sim.total_bust_pct, 0) + '%' : ''}</div>
+    <div class="oOpen" style="flex:0 0 ${sim.open_pct}%">${sim.open_pct > 10 ? numFmt(sim.open_pct, 0) + '%' : ''}</div>
+  `;
+
+  const ppEl = document.getElementById('sim_pass_pct');
+  ppEl.textContent = `${numFmt(passPct, 1)} %`;
+  ppEl.className = 'num ' + (passPct >= 50 ? 'pos' : passPct >= 25 ? 'warn' : 'neg');
+  document.getElementById('sim_pass_note').textContent = `Daily limit busts ${numFmt(sim.daily_bust_pct, 1)}%, Total DD busts ${numFmt(sim.total_bust_pct, 1)}%.`;
+
+  document.getElementById('sim_med_days').textContent = sim.median_days_to_pass ? `${sim.median_days_to_pass} Days` : '—';
+  
+  const evChallEl = document.getElementById('sim_ev_chall');
+  evChallEl.textContent = `${sim.expected_challenge_value_usd >= 0 ? '+' : '−'}${usd(Math.abs(sim.expected_challenge_value_usd), 0)}`;
+  evChallEl.className = 'num ' + (sim.expected_challenge_value_usd >= 0 ? 'pos' : 'neg');
+
+  const vVerdict = document.getElementById('verdict');
+  if (geo.expectancy_r < 0 && !geo.manual_evaluation && Math.abs(geo.annual_drift) < 1e-5) {
+    vVerdict.textContent = 'Expectancy Neutral (Martingale)';
+    vVerdict.style.color = 'var(--ink2)';
+    vVerdict.style.borderColor = 'var(--ink2)';
+  } else if (passPct >= 50) {
+    vVerdict.textContent = 'Statistically Viable Setup';
+    vVerdict.style.color = 'var(--green)';
+    vVerdict.style.borderColor = 'var(--green)';
+  } else {
+    vVerdict.textContent = 'Rules / Geometry Constrained';
+    vVerdict.style.color = 'var(--amber)';
+    vVerdict.style.borderColor = 'var(--amber)';
+  }
+
+  // Simulation Flag Explanation
+  const sFlag = document.getElementById('sim_flag');
+  if (sim.binding_constraint === 'daily_limit') {
+    sFlag.innerHTML = `<strong>Daily Loss Limit is the Binding Constraint:</strong> At 3 trades/day, ${size.loss_trades_to_daily_limit} consecutive losses trigger account failure. Consider trimming risk % or lowering trade frequency.`;
+  } else {
+    sFlag.innerHTML = `<strong>Total Drawdown Binds:</strong> Buffer of ${size.loss_trades_to_max_dd} full losses to maximum drawdown (${rules.drawdown_type === 'static' ? 'Static baseline floor' : 'Trailing from high-water mark'}).`;
+  }
+
+  // 4. Headroom Ladder
+  const ladderWrap = document.getElementById('ladderWrap');
+  const perLoss = size.total_loss_per_stop;
+  const nDay = size.loss_trades_to_daily_limit;
+  const showBars = Math.min(10, nDay + 2);
+  let lHtml = '';
+  for (let i = 1; i <= showBars; i++) {
+    const isDead = i > nDay;
+    lHtml += `
+      <div class="${isDead ? 'dead' : ''}">
+        <div class="i">Loss ${i}</div>
+        ${isDead ? 'Limit' : usd(rules.daily_loss_limit - i * perLoss, 0)}
+      </div>
+    `;
+  }
+  ladderWrap.innerHTML = lHtml;
+  document.getElementById('ladderFlag').innerHTML = `
+    <strong>${nDay} consecutive losses today</strong> will breach the daily limit of ${usd(rules.daily_loss_limit)}.
+  `;
+
+  // Update Context Template Breakevens
+  currentGeometryBeRate = geo.breakeven_win_rate * 100;
+  BE_VALS.curr = currentGeometryBeRate;
+  const currBeLab = document.getElementById('perf_curr_be');
+  if (currBeLab) currBeLab.textContent = `BE Win Rate: ${numFmt(currentGeometryBeRate, 1)}% (RRR ${numFmt(geo.rrr, 2)}:1)`;
+
+  document.getElementById('tA_be').textContent = `${numFmt((1 + 0.04)/(1 + 2.5) * 100, 1)} %`;
+  document.getElementById('tB_be').textContent = `${numFmt((1 + 0.04)/(1 + 1.8) * 100, 1)} %`;
+  document.getElementById('tC_be').textContent = `${numFmt((1 + 0.04)/(1 + 2.0) * 100, 1)} %`;
+  document.getElementById('tD_be').textContent = `${numFmt((1 + 0.04)/(1 + 1.5) * 100, 1)} %`;
+  updateTemplateLogs();
+}
+
+// ── LEFT: SHARED PRICE AXIS SVG RENDERING ────────────────────────────────────
+function renderPriceAxis() {
+  const svg = document.getElementById('axisSvg');
+  if (!svg || !state) return;
+
+  const w = svg.clientWidth || 364;
+  const h = svg.clientHeight || 780;
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+
+  const spot = state.spot || 64500;
+  const opt = state.options || {};
+  const expMove = opt.expected_move_weekly || spot * 0.05;
+
+  // Span ±1.5 expected moves around spot
+  const minP = Math.floor((spot - expMove * 1.5) / 100) * 100;
+  const maxP = Math.ceil((spot + expMove * 1.5) / 100) * 100;
+  const range = Math.max(100, maxP - minP);
+
+  document.getElementById('axisRangeLab').textContent = `${usd(minP, 0)} – ${usd(maxP, 0)}`;
+
+  const pToY = (p) => h - ((p - minP) / range) * h;
+  const yToP = (y) => maxP - (y / h) * range;
+
+  // Update slider min/max to accommodate full axis range
+  elEntry.min = minP; elEntry.max = maxP;
+  elStop.min = minP; elStop.max = maxP;
+  elTarget.min = minP; elTarget.max = maxP;
+
+  let svgHtml = '';
+
+  // 1. Grid & Price Labels
+  const step = range > 8000 ? 1000 : range > 3500 ? 500 : 250;
+  const startP = Math.ceil(minP / step) * step;
+  for (let p = startP; p <= maxP; p += step) {
+    const y = pToY(p);
+    svgHtml += `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="#d0d7da" stroke-width="1" stroke-dasharray="2 2" />`;
+    svgHtml += `<text x="${w - 6}" y="${y - 4}" fill="#54666F" font-size="9" font-family="IBM Plex Mono" text-anchor="end">${p.toLocaleString('en-US')}</text>`;
+  }
+
+  // 2. Expected Move Band (±1σ 0DTE & 7D)
+  const yEm0High = pToY(spot + (opt.expected_move_0dte || expMove * 0.35));
+  const yEm0Low = pToY(spot - (opt.expected_move_0dte || expMove * 0.35));
+  svgHtml += `<rect x="0" y="${yEm0High}" width="${w}" height="${Math.max(1, yEm0Low - yEm0High)}" fill="rgba(84, 102, 111, 0.05)" />`;
+  svgHtml += `<line x1="0" y1="${yEm0High}" x2="${w}" y2="${yEm0High}" stroke="#9BAAB1" stroke-width="1" stroke-dasharray="4 2" />`;
+  svgHtml += `<line x1="0" y1="${yEm0Low}" x2="${w}" y2="${yEm0Low}" stroke="#9BAAB1" stroke-width="1" stroke-dasharray="4 2" />`;
+  svgHtml += `<text x="6" y="${yEm0High + 10}" fill="#54666F" font-size="8" font-family="IBM Plex Sans Condensed">+1σ 0DTE</text>`;
+  svgHtml += `<text x="6" y="${yEm0Low - 4}" fill="#54666F" font-size="8" font-family="IBM Plex Sans Condensed">−1σ 0DTE</text>`;
+
+  // 3. Option Clusters (Bars on Left)
+  const clusters = opt.top_clusters || [];
+  const maxOi = Math.max(1, ...clusters.map(c => c.total_oi || 1));
+  const gexBarMaxW = w * 0.35;
+
+  clusters.forEach(c => {
+    if (c.strike < minP || c.strike > maxP) return;
+    const y = pToY(c.strike);
+    const barW = Math.max(4, (c.total_oi / maxOi) * gexBarMaxW);
+    const isNeg = (c.net_gex || 0) < 0;
+    const color = isNeg ? 'rgba(158, 43, 20, 0.45)' : 'rgba(27, 96, 70, 0.45)';
+    const stroke = isNeg ? 'var(--red)' : 'var(--green)';
+
+    svgHtml += `<rect x="0" y="${y - 4}" width="${barW}" height="8" fill="${color}" stroke="${stroke}" stroke-width="0.5" data-type="option" data-strike="${c.strike}" data-oi="${c.total_oi}" data-gex="${c.net_gex || 0}" />`;
+    if (barW > 24) {
+      svgHtml += `<text x="4" y="${y + 2.5}" fill="#0F1A21" font-size="7.5" font-family="IBM Plex Mono">${numFmt(c.total_oi, 0)}</text>`;
+    }
+  });
+
+  // 4. Order Book Depth & Volume Profile (VAP)
+  const vp = state.volume_profile?.vap || {};
+  const vapEntries = Object.entries(vp).map(([p, v]) => [+p, +v]);
+  const maxVap = Math.max(1, ...vapEntries.map(e => e[1]));
+  const vapRight = w - 60;
+  vapEntries.forEach(([price, vol]) => {
+    if (price < minP || price > maxP) return;
+    const y = pToY(price);
+    const bw = Math.min(w * 0.22, (vol / maxVap) * (w * 0.22));
+    svgHtml += `<rect x="${vapRight - bw}" y="${y - 2.5}" width="${bw}" height="5" fill="rgba(88, 166, 255, 0.3)" />`;
+  });
+
+  // POC, VAH, VAL Lines
+  const msContext = state.market_structure?.session_context || {};
+  if (msContext.session_poc && msContext.session_poc >= minP && msContext.session_poc <= maxP) {
+    const yPoc = pToY(msContext.session_poc);
+    svgHtml += `<line x1="${w * 0.4}" y1="${yPoc}" x2="${w}" y2="${yPoc}" stroke="#1A5480" stroke-width="1.2" stroke-dasharray="3 3" />`;
+    svgHtml += `<text x="${w * 0.42}" y="${yPoc - 3}" fill="#1A5480" font-size="8" font-family="IBM Plex Sans Condensed" font-weight="700">POC ${usd(msContext.session_poc, 0)}</text>`;
+  }
+
+  // 5. Liquidation Proxies (Longs & Shorts)
+  const liq = state.liquidation_proxy || {};
+  const longLiqs = liq.long_liquidations || [];
+  const shortLiqs = liq.short_liquidations || [];
+
+  [...longLiqs, ...shortLiqs].forEach(l => {
+    if (l.price < minP || l.price > maxP) return;
+    const y = pToY(l.price);
+    const isLong = l.label.includes('Long');
+    const liqColor = isLong ? 'rgba(106, 56, 140, 0.8)' : 'rgba(168, 119, 34, 0.8)';
+    svgHtml += `<line x1="${w * 0.3}" y1="${y}" x2="${w * 0.75}" y2="${y}" stroke="${liqColor}" stroke-width="1" stroke-dasharray="2 4" />`;
+    svgHtml += `<text x="${w * 0.32}" y="${y - 2}" fill="${liqColor}" font-size="7.5" font-family="IBM Plex Mono">${l.label} (${usd(l.price, 0)})</text>`;
+  });
+
+  // 6. Zero Gamma Line & Key Walls
+  if (opt.zero_gamma && opt.zero_gamma >= minP && opt.zero_gamma <= maxP) {
+    const yZ = pToY(opt.zero_gamma);
+    svgHtml += `<line x1="0" y1="${yZ}" x2="${w}" y2="${yZ}" stroke="var(--amber)" stroke-width="1.5" />`;
+    svgHtml += `<text x="8" y="${yZ - 4}" fill="var(--amber)" font-size="9" font-family="IBM Plex Sans Condensed" font-weight="700">ZERO GAMMA (${usd(opt.zero_gamma, 0)})</text>`;
+  }
+
+  // 7. Spot Price Marker
+  const ySpot = pToY(spot);
+  svgHtml += `<line x1="0" y1="${ySpot}" x2="${w}" y2="${ySpot}" stroke="var(--ink)" stroke-width="2" />`;
+  svgHtml += `
+    <g transform="translate(0, ${ySpot})">
+      <rect x="0" y="-8" width="68" height="16" fill="var(--ink)" />
+      <text x="5" y="4" fill="#fff" font-size="9.5" font-family="IBM Plex Mono" font-weight="700">${spot.toLocaleString('en-US')}</text>
+    </g>
+  `;
+
+  // 8. Interactive User Barriers (Stop, Entry, Target)
+  const entry = parseFloat(elEntry.value);
+  const stop = parseFloat(elStop.value);
+  const target = parseFloat(elTarget.value);
+
+  const yTarget = pToY(target);
+  const yEntry = pToY(entry);
+  const yStop = pToY(stop);
+
+  const handleW = 100;
+  const handleX = w - handleW - 8;
+
+  // Target line & handle
+  svgHtml += `<line x1="0" y1="${yTarget}" x2="${w}" y2="${yTarget}" stroke="var(--green)" stroke-width="2" stroke-dasharray="3 2" />`;
+  svgHtml += `
+    <g id="handle_target" transform="translate(${handleX}, ${yTarget})" style="cursor:ns-resize;" data-barrier="target">
+      <rect x="0" y="-10" width="${handleW}" height="20" fill="var(--green)" />
+      <text x="6" y="4" fill="#fff" font-size="9" font-family="IBM Plex Mono" font-weight="700">TARGET ${usd(target, 0)}</text>
+    </g>
+  `;
+
+  // Entry line & handle
+  svgHtml += `<line x1="0" y1="${yEntry}" x2="${w}" y2="${yEntry}" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="4 2" />`;
+  svgHtml += `
+    <g id="handle_entry" transform="translate(${handleX}, ${yEntry})" style="cursor:ns-resize;" data-barrier="entry">
+      <rect x="0" y="-10" width="${handleW}" height="20" fill="var(--ink)" />
+      <text x="6" y="4" fill="#fff" font-size="9" font-family="IBM Plex Mono" font-weight="700">ENTRY ${usd(entry, 0)}</text>
+    </g>
+  `;
+
+  // Stop line & handle
+  svgHtml += `<line x1="0" y1="${yStop}" x2="${w}" y2="${yStop}" stroke="var(--red)" stroke-width="2" stroke-dasharray="3 2" />`;
+  svgHtml += `
+    <g id="handle_stop" transform="translate(${handleX}, ${yStop})" style="cursor:ns-resize;" data-barrier="stop">
+      <rect x="0" y="-10" width="${handleW}" height="20" fill="var(--red)" />
+      <text x="6" y="4" fill="#fff" font-size="9" font-family="IBM Plex Mono" font-weight="700">STOP ${usd(stop, 0)}</text>
+    </g>
+  `;
+
+  svg.innerHTML = svgHtml;
+}
+
+// ── Structural Proposal Engine (Shared Price Axis Anchors) ─────────────────
+let selectedMenuPrice = 64500;
+let selectedMenuLabel = 'Axis Level';
+
+function getStructuralLevels() {
+  if (!state) return { spot: 64500 };
+  const spot = state.spot || 64500;
+  const opt = state.options || {};
+  const ms = state.market_structure || {};
+  const msCtx = ms.session_context || {};
+  const liq = state.liquidation_proxy || {};
+  const longLiqs = liq.long_liquidations || [];
+  const shortLiqs = liq.short_liquidations || [];
+
+  const putWall = opt.put_wall || Math.round((spot * 0.96) / 100) * 100;
+  const callWall = opt.call_wall || Math.round((spot * 1.04) / 100) * 100;
+  const zeroG = opt.zero_gamma || Math.round((spot * 0.995) / 100) * 100;
+  const poc = msCtx.session_poc || Math.round((spot * 0.998) / 100) * 100;
+  const vah = msCtx.session_value_area_high || Math.round((spot * 1.015) / 100) * 100;
+  const val = msCtx.session_value_area_low || Math.round((spot * 0.985) / 100) * 100;
+  const em0 = opt.expected_move_0dte || Math.round(spot * 0.012);
+  const em7 = opt.expected_move_weekly || Math.round(spot * 0.045);
+
+  const liq50Long = longLiqs.find(l => l.label && l.label.includes('50x'))?.price || Math.round((spot * 0.988) / 25) * 25;
+  const liq50Short = shortLiqs.find(l => l.label && l.label.includes('50x'))?.price || Math.round((spot * 1.012) / 25) * 25;
+  const liq25Long = longLiqs.find(l => l.label && l.label.includes('25x'))?.price || Math.round((spot * 0.975) / 25) * 25;
+  const liq25Short = shortLiqs.find(l => l.label && l.label.includes('25x'))?.price || Math.round((spot * 1.025) / 25) * 25;
+
+  return {
+    spot,
+    putWall,
+    callWall,
+    zeroG,
+    poc,
+    vah,
+    val,
+    em0,
+    em7,
+    liq50Long,
+    liq50Short,
+    liq25Long,
+    liq25Short
+  };
+}
+
+function updateProposalButtonsUI() {
+  const lv = getStructuralLevels();
+  const round25 = (val) => Math.round(val / 25) * 25;
+
+  const setSub = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+
+  const putStop = round25(lv.putWall * 0.9965);
+  const callStop = round25(lv.callWall * 1.0035);
+  const zgStop = round25(lv.val || lv.zeroG * 0.994);
+  const liqLStop = round25(lv.liq50Long * 0.9965);
+  const liqSStop = round25(lv.liq50Short * 1.0035);
+
+  setSub('pbtn_put_sub', `Entry @ ${usd(lv.putWall)} · Stop ${usd(putStop)}`);
+  setSub('pbtn_call_sub', `Entry @ ${usd(lv.callWall)} · Stop ${usd(callStop)}`);
+  setSub('pbtn_zerog_sub', `Entry @ ${usd(lv.zeroG)} · Stop ${usd(zgStop)}`);
+  setSub('pbtn_liq_l_sub', `Entry @ ${usd(lv.liq50Long)} · Stop ${usd(liqLStop)}`);
+  setSub('pbtn_liq_s_sub', `Entry @ ${usd(lv.liq50Short)} · Stop ${usd(liqSStop)}`);
+  setSub('pbtn_va_sub', `Entry @ ${usd(lv.val)} (VAL) · Tgt ${usd(lv.vah)} (VAH)`);
+}
+
+function proposeBarriers(type) {
+  const lv = getStructuralLevels();
+  const round25 = (val) => Math.round(val / 25) * 25;
+  let entry, stop, target, rationale = '';
+
+  switch (type) {
+    case 'put_wall_long':
+      // Buy into Put Gamma support (Market Makers Long Gamma / Dampening)
+      entry = round25(lv.putWall);
+      stop = round25(lv.putWall * (1 - 0.0035)); // 0.35% below Put Wall
+      target = round25(lv.poc > entry ? lv.poc : (lv.zeroG > entry ? lv.zeroG : entry * 1.018));
+      rationale = `Put Wall Pinning Long: Entry @ Put Wall (${usd(entry)}), Stop 0.35% below (${usd(stop)}), Target @ POC/Zero-Γ (${usd(target)})`;
+      break;
+
+    case 'call_wall_short':
+      // Short into Call Gamma resistance
+      entry = round25(lv.callWall);
+      stop = round25(lv.callWall * (1 + 0.0035)); // 0.35% above Call Wall
+      target = round25(lv.poc < entry ? lv.poc : (lv.zeroG < entry ? lv.zeroG : entry * 0.982));
+      rationale = `Call Wall Short: Entry @ Call Wall (${usd(entry)}), Stop 0.35% above (${usd(stop)}), Target @ POC/Zero-Γ (${usd(target)})`;
+      break;
+
+    case 'zerog_breakout_long':
+      // Directional expansion across Zero Gamma
+      entry = round25(lv.zeroG);
+      stop = round25(lv.val < entry ? lv.val : entry * (1 - 0.006));
+      target = round25(entry + (lv.em0 > 0 ? lv.em0 : lv.spot * 0.015));
+      rationale = `Zero-Γ Breakout Long: Entry @ Zero-Γ (${usd(entry)}), Stop @ VAL (${usd(stop)}), Target @ +1σ EM (${usd(target)})`;
+      break;
+
+    case 'liq_sweep_long':
+      // 50x Long Liquidation flush fade
+      entry = round25(lv.liq50Long);
+      stop = round25(lv.liq25Long < entry ? lv.liq25Long * 0.998 : entry * (1 - 0.004));
+      target = round25(lv.poc > entry ? lv.poc : lv.spot);
+      rationale = `50x Liq Sweep Long: Entry @ 50x Liq (${usd(entry)}), Stop below cascade (${usd(stop)}), Target @ POC (${usd(target)})`;
+      break;
+
+    case 'liq_sweep_short':
+      // 50x Short Liquidation flush fade
+      entry = round25(lv.liq50Short);
+      stop = round25(lv.liq25Short > entry ? lv.liq25Short * 1.002 : entry * (1 + 0.004));
+      target = round25(lv.poc < entry ? lv.poc : lv.spot);
+      rationale = `50x Liq Sweep Short: Entry @ 50x Liq (${usd(entry)}), Stop above cascade (${usd(stop)}), Target @ POC (${usd(target)})`;
+      break;
+
+    case 'va_reversion_long':
+      // Value Area Low to Value Area High
+      entry = round25(lv.val);
+      stop = round25(lv.val * (1 - 0.0035));
+      target = round25(lv.vah > entry ? lv.vah : entry * 1.018);
+      rationale = `Value Area Reversion: Entry @ Session VAL (${usd(entry)}), Stop below VAL (${usd(stop)}), Target @ VAH (${usd(target)})`;
+      break;
+
+    default:
+      return;
+  }
+
+  // Set inputs
+  elEntry.value = entry;
+  elStop.value = stop;
+  elTarget.value = target;
+
+  // Update proposed anchor note
+  const noteEl = document.getElementById('proposedAnchorNote');
+  if (noteEl) {
+    noteEl.innerHTML = `<strong>⚓ Axis Proposed:</strong> ${rationale}`;
+  }
+
+  // Re-render and recalculate
+  renderPriceAxis();
+  evaluateTrade();
+}
+
+function setBarrierFromMenu(barrier) {
+  const round25 = (val) => Math.round(val / 25) * 25;
+  const p = round25(selectedMenuPrice);
+  const curEntry = parseFloat(elEntry.value);
+
+  if (barrier === 'entry') {
+    const curStop = parseFloat(elStop.value);
+    const curTarget = parseFloat(elTarget.value);
+    const shift = p - curEntry;
+    elEntry.value = p;
+    elStop.value = round25(curStop + shift);
+    elTarget.value = round25(curTarget + shift);
+  } else if (barrier === 'stop') {
+    elStop.value = Math.min(p, curEntry - 25);
+  } else if (barrier === 'target') {
+    elTarget.value = Math.max(p, curEntry + 25);
+  }
+
+  const noteEl = document.getElementById('proposedAnchorNote');
+  if (noteEl) {
+    noteEl.innerHTML = `<strong>⚓ Snapped:</strong> ${barrier.toUpperCase()} set to ${usd(p)} (${selectedMenuLabel})`;
+  }
+
+  hideAxisMenu();
+  renderPriceAxis();
+  evaluateTrade();
+}
+
+function proposeFromAxisMenu(direction) {
+  const round25 = (val) => Math.round(val / 25) * 25;
+  const entry = round25(selectedMenuPrice);
+  const lv = getStructuralLevels();
+  let stop, target, rationale;
+
+  if (direction === 'long') {
+    stop = round25(entry * (1 - 0.004));
+    target = round25(lv.vah > entry ? lv.vah : (lv.callWall > entry ? lv.callWall : entry * 1.012));
+    rationale = `Long anchored at ${selectedMenuLabel} (${usd(entry)}), Stop @ ${usd(stop)}, Target @ ${usd(target)}`;
+  } else {
+    stop = round25(entry * (1 + 0.004));
+    target = round25(lv.val < entry ? lv.val : (lv.putWall < entry ? lv.putWall : entry * 0.988));
+    rationale = `Short anchored at ${selectedMenuLabel} (${usd(entry)}), Stop @ ${usd(stop)}, Target @ ${usd(target)}`;
+  }
+
+  elEntry.value = entry;
+  elStop.value = stop;
+  elTarget.value = target;
+
+  const noteEl = document.getElementById('proposedAnchorNote');
+  if (noteEl) {
+    noteEl.innerHTML = `<strong>⚓ Axis Proposed:</strong> ${rationale}`;
+  }
+
+  hideAxisMenu();
+  renderPriceAxis();
+  evaluateTrade();
+}
+
+function hideAxisMenu() {
+  const menu = document.getElementById('axisClickMenu');
+  if (menu) menu.style.display = 'none';
+}
+
+// ── Interactive Dragging & Tooltip on Price Axis SVG ─────────────────────────
+function initAxisDrag() {
+  const wrap = document.getElementById('axisWrap');
+  const menu = document.getElementById('axisClickMenu');
+  if (!wrap) return;
+
+  function getPriceFromY(clientY) {
+    const rect = wrap.getBoundingClientRect();
+    const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
+    const spot = state?.spot || 64500;
+    const expMove = state?.options?.expected_move_weekly || spot * 0.05;
+    const minP = Math.floor((spot - expMove * 1.5) / 100) * 100;
+    const maxP = Math.ceil((spot + expMove * 1.5) / 100) * 100;
+    return Math.round((maxP - (y / rect.height) * (maxP - minP)) / 25) * 25;
+  }
+
+  let dragStarted = false;
+  let downX = 0;
+  let downY = 0;
+
+  function onPointerDown(e) {
+    if (!state) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    downX = clientX;
+    downY = clientY;
+    dragStarted = false;
+
+    const clickedPrice = getPriceFromY(clientY);
+    const entry = parseFloat(elEntry.value);
+    const stop = parseFloat(elStop.value);
+    const target = parseFloat(elTarget.value);
+
+    const dStop = Math.abs(clickedPrice - stop);
+    const dEntry = Math.abs(clickedPrice - entry);
+    const dTarget = Math.abs(clickedPrice - target);
+
+    // If close to a handle, start dragging barrier
+    const minD = Math.min(dStop, dEntry, dTarget);
+    const threshold = (state?.options?.expected_move_weekly || 3000) * 0.04;
+    if (minD < threshold) {
+      if (minD === dStop) isDraggingBarrier = 'stop';
+      else if (minD === dEntry) isDraggingBarrier = 'entry';
+      else isDraggingBarrier = 'target';
+      wrap.style.cursor = 'ns-resize';
+      hideAxisMenu();
+    } else {
+      isDraggingBarrier = null;
+    }
+  }
+
+  function onPointerMove(e) {
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    if (Math.hypot(clientX - downX, clientY - downY) > 4) {
+      dragStarted = true;
+    }
+
+    if (!isDraggingBarrier || !state) return;
+    const newPrice = getPriceFromY(clientY);
+    const curEntry = parseFloat(elEntry.value);
+
+    if (isDraggingBarrier === 'stop') {
+      elStop.value = Math.min(newPrice, curEntry - 25);
+    } else if (isDraggingBarrier === 'entry') {
+      const curStop = parseFloat(elStop.value);
+      const curTarget = parseFloat(elTarget.value);
+      const shift = newPrice - curEntry;
+      elEntry.value = newPrice;
+      elStop.value = Math.round((curStop + shift) / 25) * 25;
+      elTarget.value = Math.round((curTarget + shift) / 25) * 25;
+    } else if (isDraggingBarrier === 'target') {
+      elTarget.value = Math.max(newPrice, curEntry + 25);
+    }
+
+    renderPriceAxis();
+    evaluateTrade();
+  }
+
+  function onPointerUp(e) {
+    const wasDragging = isDraggingBarrier && dragStarted;
+    isDraggingBarrier = null;
+    wrap.style.cursor = 'crosshair';
+
+    // If clicked without dragging, show the interactive Snap/Propose menu
+    if (!wasDragging && !dragStarted && e && menu) {
+      const rect = wrap.getBoundingClientRect();
+      const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+      const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+      const clickedPrice = getPriceFromY(clientY);
+
+      selectedMenuPrice = clickedPrice;
+      
+      // Identify nearest structural level
+      const lv = getStructuralLevels();
+      const levels = [
+        { name: 'Put Wall', price: lv.putWall },
+        { name: 'Call Wall', price: lv.callWall },
+        { name: 'Zero Gamma', price: lv.zeroG },
+        { name: 'Session POC', price: lv.poc },
+        { name: 'Value Area High (VAH)', price: lv.vah },
+        { name: 'Value Area Low (VAL)', price: lv.val },
+        { name: '50x Long Liq', price: lv.liq50Long },
+        { name: '50x Short Liq', price: lv.liq50Short },
+        { name: 'Spot', price: lv.spot }
+      ];
+
+      levels.sort((a, b) => Math.abs(a.price - clickedPrice) - Math.abs(b.price - clickedPrice));
+      const nearest = levels[0];
+      const isNear = Math.abs(nearest.price - clickedPrice) < ((state?.options?.expected_move_weekly || 3000) * 0.05);
+
+      selectedMenuLabel = isNear ? nearest.name : `Price Level`;
+
+      const titleEl = document.getElementById('acmLevel');
+      if (titleEl) {
+        titleEl.textContent = isNear ? `${nearest.name}: ${usd(clickedPrice)}` : `Price: ${usd(clickedPrice)}`;
+      }
+
+      const relX = Math.min(rect.width - 190, Math.max(8, clientX - rect.left - 40));
+      const relY = Math.min(rect.height - 70, Math.max(10, clientY - rect.top - 20));
+      menu.style.left = `${relX}px`;
+      menu.style.top = `${relY}px`;
+      menu.style.display = 'block';
+    }
+  }
+
+  wrap.addEventListener('mousedown', onPointerDown);
+  window.addEventListener('mousemove', onPointerMove);
+  window.addEventListener('mouseup', onPointerUp);
+
+  wrap.addEventListener('touchstart', onPointerDown, { passive: true });
+  window.addEventListener('touchmove', onPointerMove, { passive: true });
+  window.addEventListener('touchend', onPointerUp);
+
+  // Close menu if clicked outside
+  document.addEventListener('click', (e) => {
+    if (menu && !wrap.contains(e.target)) {
+      menu.style.display = 'none';
+    }
+  });
+
+  // ResizeObserver for responsive SVG re-rendering
+  const ro = new ResizeObserver(() => renderPriceAxis());
+  ro.observe(wrap);
+}
+
+// ── Context Template Logs & Calibration Engine ──────────────────────────────
+const TPL_KEYS = ['curr', 'tA', 'tB', 'tC', 'tD'];
+let currentGeometryBeRate = 33.3;
+const BE_VALS = { curr: 33.3, tA: 29.7, tB: 37.1, tC: 34.7, tD: 41.6 };
+
+function initTemplateLogs() {
+  TPL_KEYS.forEach(k => {
+    const savedW = localStorage.getItem(`risk_log_${k}_w`);
+    const savedN = localStorage.getItem(`risk_log_${k}_n`);
+    
+    // Check elements in setup-perf and tpl-card
+    const perfW = document.getElementById(`perf_${k}_w`);
+    const perfN = document.getElementById(`perf_${k}_n`);
+    const tplW = document.getElementById(`${k}_w`);
+    const tplN = document.getElementById(`${k}_n`);
+
+    if (savedW !== null) {
+      if (perfW) perfW.value = savedW;
+      if (tplW) tplW.value = savedW;
+    }
+    if (savedN !== null) {
+      if (perfN) perfN.value = savedN;
+      if (tplN) tplN.value = savedN;
+    }
+
+    const onInput = (valW, valN) => {
+      localStorage.setItem(`risk_log_${k}_w`, valW);
+      localStorage.setItem(`risk_log_${k}_n`, valN);
+      if (perfW) perfW.value = valW;
+      if (tplW) tplW.value = valW;
+      if (perfN) perfN.value = valN;
+      if (tplN) tplN.value = valN;
+      updateTemplateLogs();
+    };
+
+    if (perfW && perfN) {
+      perfW.addEventListener('input', () => onInput(perfW.value, perfN.value));
+      perfN.addEventListener('input', () => onInput(perfW.value, perfN.value));
+    }
+    if (tplW && tplN) {
+      tplW.addEventListener('input', () => onInput(tplW.value, tplN.value));
+      tplN.addEventListener('input', () => onInput(tplW.value, tplN.value));
+    }
+  });
+  updateTemplateLogs();
+}
+
+function updateTemplateLogs() {
+  TPL_KEYS.forEach(k => {
+    const w = parseInt(document.getElementById(`perf_${k}_w`)?.value || document.getElementById(`${k}_w`)?.value || '0', 10);
+    const n = parseInt(document.getElementById(`perf_${k}_n`)?.value || document.getElementById(`${k}_n`)?.value || '0', 10);
+    
+    const sampleEl = document.getElementById(`${k}_sample`);
+    const edgeEl = document.getElementById(`${k}_edge`);
+    const perfResEl = document.getElementById(`perf_${k}_res`);
+    
+    const beRate = k === 'curr' ? currentGeometryBeRate : BE_VALS[k];
+
+    if (n <= 0 || isNaN(n)) {
+      if (sampleEl) {
+        sampleEl.textContent = 'Uncalibrated (0 Trades)';
+        sampleEl.style.color = 'var(--ink2)';
+        sampleEl.style.fontWeight = 'normal';
+      }
+      if (edgeEl) {
+        edgeEl.textContent = '—';
+        edgeEl.className = '';
+      }
+      if (perfResEl) {
+        perfResEl.textContent = 'Uncalibrated';
+        perfResEl.style.color = 'var(--ink2)';
+        perfResEl.style.fontWeight = 'normal';
+      }
+    } else {
+      const realRate = (Math.min(w, n) / n) * 100;
+      const formattedRate = `${numFmt(realRate, 1)}% (${w}/${n})`;
+      const edge = realRate - beRate;
+      const isPositive = edge >= 0;
+      const colorStyle = isPositive ? 'var(--green)' : 'var(--red)';
+
+      if (sampleEl) {
+        sampleEl.textContent = formattedRate;
+        sampleEl.style.fontWeight = '700';
+        sampleEl.style.color = colorStyle;
+      }
+      if (edgeEl) {
+        edgeEl.textContent = `${isPositive ? '+' : ''}${numFmt(edge, 1)}% ${isPositive ? 'Edge' : 'Drag'}`;
+        edgeEl.className = isPositive ? 'pos' : 'neg';
+      }
+      if (perfResEl) {
+        perfResEl.textContent = `${numFmt(realRate, 1)}% (${isPositive ? '+' : ''}${numFmt(edge, 1)}%)`;
+        perfResEl.style.color = colorStyle;
+        perfResEl.style.fontWeight = '700';
+      }
+    }
+  });
+}
+
+// ── Event Listeners ─────────────────────────────────────────────────────────
+[elEntry, elStop, elTarget, elRiskPct, elDrift, elManualP].forEach(input => {
+  input.addEventListener('input', () => {
+    renderPriceAxis();
+    evaluateTrade();
+  });
+});
+
+btnResetManualP.addEventListener('click', () => {
+  elManualP.value = 0;
+  evaluateTrade();
+});
+
+// ── 24h UTC Clock Updater ───────────────────────────────────────────────────
+function updateUtcClock() {
+  const now = new Date();
+  const h = String(now.getUTCHours()).padStart(2, '0');
+  const m = String(now.getUTCMinutes()).padStart(2, '0');
+  const s = String(now.getUTCSeconds()).padStart(2, '0');
+  document.getElementById('utcClock').textContent = `UTC ${h}:${m}:${s}`;
+
+  const fracOfDay = (now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds()) / 86400;
+  const nowMark = document.getElementById('utcNowMark');
+  if (nowMark) {
+    nowMark.style.left = `${(fracOfDay * 100).toFixed(2)}%`;
+  }
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+setInterval(updateUtcClock, 1000);
+updateUtcClock();
+initAxisDrag();
+initTemplateLogs();
+fetchState();
+setInterval(fetchState, 3000);
+connectWs();
+</script>
+</body>
+</html>
