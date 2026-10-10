@@ -1,0 +1,194 @@
+//@version=5
+// =============================================================================
+// Nitro Trades CRT — Mike Babayan Original-Regeln (Variante A: direkter Breakout)
+// Referenz-Implementierung + Tests: src/core/crtStrategy.ts / src/tests/test_crt_strategy.ts
+//
+// Korrekturen gegenueber der ersten Fassung:
+//  1. Timing: Setup wird am Close von C2 erkannt (C1 = bar[1], C2 = bar[0]).
+//     Pine fuehrt Orders erst ab der NAECHSTEN Kerze aus -> Order lebt genau
+//     waehrend C3. (Vorher: C2 = bar[1] -> Order lief erst in Kerze 4.)
+//  2. Verfall: unausgeloeste Stop-Orders werden aktiv per strategy.cancel
+//     geloescht. (Vorher wurde nur arm_* = false gesetzt, die Order blieb
+//     bis Session-Ende im Markt.)
+//  3. 1H-Bias wird nur einmal pro NEUER 1H-Kerze aktualisiert. (Vorher zaehlte
+//     jede 15m-Kerze dieselbe 1H-Kerze erneut -> "2 Closes" nach einer Kerze.)
+//  4. Invalidation bezieht sich nur auf das Level, das den Bias erzeugt hat,
+//     und verlangt volle Body-Closes jenseits des Levels.
+//  5. Kein-Repaint-Idiom: request.security(..., expr[1], lookahead_on).
+//  6. Tageslimit zaehlt Einstiege (nicht erst geschlossene Trades).
+//  7. Positionsgroesse risikobasiert (fester % Equity pro Trade bis SL).
+//
+// Bekannte Grenzen: Variante B (1m Re-Break) nur in crtStrategy.ts. Erreicht
+// eine Kerze nach dem Fill Stop UND Target, entscheidet TradingView per
+// Intrabar-Annahme — fuer Genauigkeit "Bar Magnifier" aktivieren.
+// =============================================================================
+strategy("Nitro Trades CRT (Babayan Regeln)",
+         overlay=true,
+         initial_capital=50000,
+         pyramiding=0,
+         commission_type=strategy.commission.percent,
+         commission_value=0.04)
+
+// =============================================================================
+// 1. INPUTS
+// =============================================================================
+grp_time   = "Handelszeiten (America/New_York)"
+use_ny     = input.bool(true, "New York AM", group=grp_time, inline="ny")
+ny_sess    = input.session("0930-1200", "", group=grp_time, inline="ny")
+use_asia   = input.bool(true, "Asian Session", group=grp_time, inline="as")
+asia_sess  = input.session("2000-2200", "", group=grp_time, inline="as")
+max_trades = input.int(2, "Max. Trades pro Tag", minval=1, maxval=2, group=grp_time)
+
+grp_htf      = "Higher Timeframe Bias"
+use_bias     = input.bool(true, "1H Territory-Bias nutzen", group=grp_htf)
+htf_tf       = input.timeframe("60", "Bias-Zeiteinheit", group=grp_htf)
+pivot_len    = input.int(3, "Swing Pivot-Laenge", minval=1, group=grp_htf)
+inval_closes = input.int(2, "Invalidation nach N Body-Closes", minval=1, maxval=2, group=grp_htf)
+
+grp_risk = "Risiko & Order"
+rr_ratio = input.float(1.5, "Festes Reward:Risk", minval=1.0, step=0.1, group=grp_risk)
+tick_buf = input.int(1, "Entry-Buffer (Ticks)", minval=0, group=grp_risk)
+risk_pct = input.float(1.0, "Risiko pro Trade (% Equity)", minval=0.1, step=0.1, group=grp_risk)
+
+tz = "America/New_York"
+
+// =============================================================================
+// 2. SESSION & TAGESLIMIT — bezogen auf die Eroeffnung von C3 (= time_close)
+// =============================================================================
+f_min(s, i) => int(str.tonumber(str.substring(s, i, i + 2))) * 60 + int(str.tonumber(str.substring(s, i + 2, i + 4)))
+f_in_window(t, s) =>
+    m = hour(t, tz) * 60 + minute(t, tz)
+    m >= f_min(s, 0) and m < f_min(s, 5)
+
+c3_time   = time_close
+c3_in_sess = (use_ny and f_in_window(c3_time, ny_sess)) or (use_asia and f_in_window(c3_time, asia_sess))
+
+f_day(t) => year(t, tz) * 10000 + month(t, tz) * 100 + dayofmonth(t, tz)
+var int trades_today = 0
+var int cur_day = na
+if na(cur_day) or f_day(time) != cur_day
+    trades_today := 0
+    cur_day := f_day(time)
+
+// Neue Einstiege dieser Kerze dem Tag zurechnen
+entries_total = strategy.closedtrades + strategy.opentrades
+trades_today += entries_total - nz(entries_total[1])
+
+c3_trades = f_day(c3_time) == cur_day ? trades_today : 0
+can_trade = c3_in_sess and c3_trades < max_trades
+
+// =============================================================================
+// 3. 1H BIAS — Sweep + Rejection eines Swing-Extrems, Invalidation per Body-Close
+// =============================================================================
+[h_o, h_h, h_l, h_c, h_t] = request.security(syminfo.tickerid, htf_tf, [open[1], high[1], low[1], close[1], time[1]], lookahead=barmerge.lookahead_on)
+[piv_h, piv_l] = request.security(syminfo.tickerid, htf_tf, [ta.pivothigh(high, pivot_len, pivot_len)[1], ta.pivotlow(low, pivot_len, pivot_len)[1]], lookahead=barmerge.lookahead_on)
+
+htf_new = not na(h_t) and (na(h_t[1]) or h_t != h_t[1])
+
+var float swing_h  = na
+var float swing_l  = na
+var int   bias     = 0     // 1 = Kaeufer-Territorium (nur Long), -1 = nur Short
+var float bias_lvl = na
+var int   beyond   = 0
+
+if htf_new
+    // Sweep gegen die BISHER bekannten Swing-Level pruefen
+    swept_l = not na(swing_l) and h_l < swing_l and h_c > swing_l
+    swept_h = not na(swing_h) and h_h > swing_h and h_c < swing_h
+    if swept_l and not swept_h
+        bias := 1
+        bias_lvl := swing_l
+        beyond := 0
+    else if swept_h and not swept_l
+        bias := -1
+        bias_lvl := swing_h
+        beyond := 0
+    else if swept_l and swept_h
+        // Outside Bar: beide Seiten gesweept -> kein Territorium
+        bias := 0
+        bias_lvl := na
+        beyond := 0
+    else if bias != 0
+        body_beyond = bias == 1 ? math.max(h_o, h_c) < bias_lvl : math.min(h_o, h_c) > bias_lvl
+        beyond := body_beyond ? beyond + 1 : 0
+        if beyond >= inval_closes
+            bias := 0
+            bias_lvl := na
+            beyond := 0
+    // Danach neu bestaetigte Swings uebernehmen
+    if not na(piv_h)
+        swing_h := piv_h
+    if not na(piv_l)
+        swing_l := piv_l
+
+allow_long  = not use_bias or bias == 1
+allow_short = not use_bias or bias == -1
+
+// =============================================================================
+// 4. CRT SETUP am Close von C2 (C1 = bar[1], C2 = aktuelle Kerze)
+// =============================================================================
+c1_h = high[1]
+c1_l = low[1]
+
+bull_c2 = low < c1_l and close > c1_l and high <= c1_h
+bear_c2 = high > c1_h and close < c1_h and low >= c1_l
+
+offset = syminfo.mintick * tick_buf
+flat   = strategy.position_size == 0
+
+long_entry  = high + offset
+long_reward = c1_h - long_entry
+long_sl     = long_entry - long_reward / rr_ratio
+
+short_entry  = low - offset
+short_reward = short_entry - c1_l
+short_sl     = short_entry + short_reward / rr_ratio
+
+place_long  = flat and bull_c2 and long_reward > 0 and allow_long and can_trade
+place_short = flat and bear_c2 and short_reward > 0 and allow_short and can_trade
+
+f_qty(entry, sl) => strategy.equity * risk_pct / 100 / (math.abs(entry - sl) * syminfo.pointvalue)
+
+// =============================================================================
+// 5. ORDERS — jede Stop-Order lebt genau eine Kerze (C3)
+// =============================================================================
+if place_long
+    strategy.entry("CRT_Buy", strategy.long, qty=f_qty(long_entry, long_sl), stop=long_entry)
+    strategy.exit("Bracket_Long", from_entry="CRT_Buy", limit=c1_h, stop=long_sl)
+else
+    strategy.cancel("CRT_Buy")
+
+if place_short
+    strategy.entry("CRT_Sell", strategy.short, qty=f_qty(short_entry, short_sl), stop=short_entry)
+    strategy.exit("Bracket_Short", from_entry="CRT_Sell", limit=c1_l, stop=short_sl)
+else
+    strategy.cancel("CRT_Sell")
+
+// =============================================================================
+// 6. VISUALISIERUNG
+// =============================================================================
+var float v_tp = na
+var float v_sl = na
+var float v_en = na
+if place_long
+    v_tp := c1_h
+    v_sl := long_sl
+    v_en := long_entry
+else if place_short
+    v_tp := c1_l
+    v_sl := short_sl
+    v_en := short_entry
+else if flat
+    v_tp := na
+    v_sl := na
+    v_en := na
+
+plot(v_tp, "Target (C1 Extrem)", color=color.green, style=plot.style_linebr, linewidth=2)
+plot(v_en, "Entry Stop (C2 Extrem)", color=color.blue, style=plot.style_linebr, linewidth=1)
+plot(v_sl, "Stop (fixes CRV)", color=color.red, style=plot.style_linebr, linewidth=2)
+
+plotshape(bull_c2, "CRT Long C2", shape.triangleup, location.belowbar, color.new(color.green, 40), size=size.tiny)
+plotshape(bear_c2, "CRT Short C2", shape.triangledown, location.abovebar, color.new(color.red, 40), size=size.tiny)
+
+bgcolor(bias == 1 ? color.new(color.green, 95) : bias == -1 ? color.new(color.red, 95) : na, title="1H Territorium")
+plot(bias_lvl, "Bias Level", color=color.new(color.orange, 30), style=plot.style_circles, linewidth=1)

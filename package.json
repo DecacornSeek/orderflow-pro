@@ -7,7 +7,7 @@
     "dev": "tsx server.ts",
     "build": "tsc",
     "start": "tsx server.ts",
-    "test": "tsx src/tests/test_geometry_and_options.ts"
+    "test": "tsx src/tests/test_geometry_and_options.ts && tsx src/tests/test_crt_strategy.ts"
   },
   "dependencies": {
     "express": "^4.19.2",

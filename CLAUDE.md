@@ -361,6 +361,7 @@ Sprint B: COMPLETE — Delta Divergenz + Session-Phasen + IB + Profil-Konsolidie
 Sprint B2: COMPLETE — Interpretations-Layer Steps 5-8 (Struktur + Zonen + Road Map, 97 neue Asserts)
 Sprint B3: COMPLETE — Backlog-Abarbeitung (Lethargy + Inside Bar + VPOC Trend + Signal Prompt, 104 neue Tests)
 Sprint D (Options & Pre-Session Briefing): COMPLETE — Deribit Chain + GEX Surface + Pre-Session Briefing-Karte ("Die Karte") + Event Layer + Hysterese-Filter + Restzeit-Decayed 1σ (25 Tests)
+Sprint C1 (Nitro CRT Strategie): COMPLETE — CRT Detector + 1H Bias + Re-Break + Backtest + Pine v5 (51 Tests)
 Sprint E (Risk & Challenge Geometry): COMPLETE — Multi-Barrier Tranches (P(T1), P(T2|T1)) + Regime-Conditioned Monte Carlo (4000 Paths) + Prop Presets + Shared Price Axis Sync
 
 ## Sprint D & E: Options-Layer, Pre-Session Briefing & Risk Engine — COMPLETE (2026-08)
@@ -423,6 +424,24 @@ Sprint E (Risk & Challenge Geometry): COMPLETE — Multi-Barrier Tranches (P(T1)
 ### 5. Verifikation & Tests (`src/tests/test_geometry_and_options.ts`)
 - 25 automatisierte Unit- und Integrationstests (GBM First-Passage Identitäten, Breakeven RRR, Scale-Out Wahrscheinlichkeiten, Prop-Sizing, Challenge Monte Carlo, Options GEX Modeling, $25\Delta$-Skew).
 - Ausführung: `npm test` oder `npx tsx src/tests/test_geometry_and_options.ts`.
+
+## Sprint C1: Nitro Trades CRT Strategie (Babayan Original-Regeln) — 2026-10-10
+- src/core/crtStrategy.ts — reine Funktionen + Zustandsautomaten:
+  detectCrtSetup (C1 Range, C2 Sweep + Close zurueck, Gegenseite unverletzt),
+  bracketFromEntry (TP = C1-Extrem, SL = Entry -/+ Reward/1.5),
+  HtfBiasTracker (1H Swing-Sweep + Rejection -> Territorium; Invalidation nach
+  N vollen Body-Closes jenseits des Bias-Levels; Outside Bar -> neutral),
+  activeSession/nyClock (09:30-12:00 + 20:00-22:00 NY, DST via Intl),
+  ReBreakMachine (Variante B, 1m: Break -> 1-3 Ruecksetzer -> Re-Break),
+  runCrtBacktest (Variante A/B, Tageslimit, Pyramiding 0, Gebuehren in R)
+- Entscheidungen: Setup nur waehrend C3 handelbar, sonst Verfall;
+  Stop+Target in derselben Kerze -> konservativ Stop (sameBarPolicy);
+  Session/Tageslimit beziehen sich auf die Eroeffnung von C3 (NY-Kalendertag);
+  "Trend bricht dynamisch durch" ist nicht formalisiert (diskretionaer)
+- strategies/nitro_crt.pine — korrigiertes Pine v5 (Variante A): Order lebt
+  in C3 statt C4, aktiver Cancel beim Verfall, 1H-Bias einmal pro HTF-Kerze,
+  risikobasierte Positionsgroesse
+- src/tests/test_crt_strategy.ts — 51 Tests (npm test)
 
 ## Daten-Struktur
 data/
